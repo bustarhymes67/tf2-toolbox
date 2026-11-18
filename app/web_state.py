@@ -11,6 +11,8 @@ registered actions can be run from the page."""
 
 import time
 
+import cheat_score
+
 STATE = {}    # page name -> function(app) -> dict
 ACTIONS = {}  # action name -> function(app, *args)
 
@@ -40,8 +42,9 @@ def light(state):
 def header(app):
     """The title bar and the sidebar: player count, map, server, the four lights, feedback, the open page,
     the sidebar's badges and its footer."""
+    # Flagged players, plus any the cheater score calls Likely / Proven without a flag (as the Cheaters chip does).
     flagged = sum(1 for p in app.players.values() if p.sid != app.me
-                  and max((s for s, _ in app.flags.get(p.sid, [])), default=-1) >= 1)
+                  and (max((s for s, _ in app.flags.get(p.sid, [])), default=-1) >= 1 or cheat_score.is_cheater(app, p)))
     states = {"TF2": app.rcon_state, "Steam": app.api_state, "History": app.sh_state, "Lists": app.lists_state}
     me = app.players.get(app.me)
     server, slots = app.server_text()

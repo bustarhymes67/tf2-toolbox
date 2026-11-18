@@ -66,6 +66,10 @@
 .pl-grp.g0{color:#c58cff}.pl-grp.g1{color:#3fdc8a}.pl-grp.g2{color:#ff8ad8}
 .pl-grp.g3{color:#8ccfff}.pl-grp.g4{color:#e0c58a}.pl-grp.g5{color:#2de2c8}
 .pt td .pn{vertical-align:middle}
+/* the name ellipsizes before its group chip does (the full name is the title, on hover) */
+.pl-pw{display:flex;align-items:center;min-width:0}
+.pl-pw .pn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl-pw .pl-grp{flex:none}
 .pl-gc{color:var(--tx2);white-space:nowrap}
 .pl-why{font-family:var(--f-num);font-size:10.5px;color:var(--tx3);cursor:help;border-bottom:1px dotted var(--ln2);outline:none}
 .pl-why:hover,.pl-why:focus{color:var(--ac);border-bottom-color:var(--ac)}
@@ -76,3 +80,39 @@
 
 /* the team name never breaks onto two lines when the header gets long */
 .team .thead .tname{white-space:nowrap;flex:none}
+
+/* the cheater score (cheat_score.py): its band as a chip, the panel's score, the multipliers, the tooltip */
+.cs-band{display:inline-block;vertical-align:middle;font-family:var(--f-num);font-size:10px;font-weight:700;line-height:16px;
+  padding:0 5px;border:1px solid;letter-spacing:.04em;white-space:nowrap;margin-right:9px}
+.cs-band.b-Clean{color:var(--tx3);border-color:var(--ln2)}
+.cs-band.b-Watch{color:var(--yel);border-color:rgba(242,208,75,.45)}
+.cs-band.b-Suspicious{color:var(--org);border-color:rgba(255,150,64,.55)}
+.cs-band.b-Likely{color:#1a0505;background:var(--red);border-color:var(--red)}
+.cs-band.b-Proven{color:#1a0505;background:var(--red);border-color:var(--red);box-shadow:0 0 0 1px #1a0505,0 0 0 2px var(--red)}
+.dh .verdict.cs-band{margin:0;font-size:10.5px;line-height:18px;cursor:help;outline:none}
+.dh .verdict.cs-band:focus{box-shadow:0 0 0 1px var(--ac)}
+.dh .lab{padding-right:150px}
+.pt tbody tr[data-sid]{cursor:default}
+.reason .cs-lr{margin-left:auto;flex:none;font-family:var(--f-num);font-size:11px;font-weight:700;line-height:18px;padding-left:8px}
+.cs-lr.up{color:#ff8a83}.cs-lr.dn{color:#3fdc8a}
+.pl-tip.cs-tip{max-width:460px;width:max-content;padding:9px 11px;font-size:11.5px}
+.cs-tip .cs-s{color:var(--tx2);font-family:var(--f-num);font-size:10.5px;padding-bottom:5px;border-bottom:1px solid var(--ln2);margin-bottom:5px}
+.cs-tip .cs-r{display:flex;gap:9px;align-items:baseline;padding:2px 0}
+.cs-tip .cs-r b{flex:none;width:46px;text-align:right;font-family:var(--f-num);font-size:11.5px}
+.cs-tip .cs-r b.up{color:#ff8a83}.cs-tip .cs-r b.dn{color:#3fdc8a}.cs-tip .cs-r b.pf{color:var(--red)}
+.cs-tip .cs-r span{color:var(--tx)}
+.cs-tip .cs-r em{font-style:normal;color:var(--tx3)}
+.cs-tip .cs-e{margin-top:6px;padding-top:6px;border-top:1px solid var(--ln2);font-family:var(--f-num);font-size:11px;color:var(--tx2);
+  display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.cs-tip .cs-e b{color:var(--tx);font-size:12.5px}
+.cs-tip .cs-e i{font-style:normal;color:var(--ac)}
+.cs-tip .cs-w{font-family:var(--f-num);font-size:10.5px;font-weight:700;line-height:16px;padding:0 5px;border:1px solid}
+.cs-tip .cs-w.b-Clean{color:var(--tx3);border-color:var(--ln2)}
+.cs-tip .cs-w.b-Watch{color:var(--yel);border-color:rgba(242,208,75,.45)}
+.cs-tip .cs-w.b-Suspicious{color:var(--org);border-color:rgba(255,150,64,.55)}
+.cs-tip .cs-w.b-Likely,.cs-tip .cs-w.b-Proven{color:#1a0505;background:var(--red);border-color:var(--red)}
+.cs-tip .cs-n{margin-top:4px;font-size:10.5px;color:var(--tx3)}
+
+/* the list: the score as a compact percentage, the stamp and flag text keep their room */
+.pt .cs-band.cs-mini{padding:1px 5px;margin-right:6px;letter-spacing:0}
+.pt .hp .bar{width:90px!important;flex:none}

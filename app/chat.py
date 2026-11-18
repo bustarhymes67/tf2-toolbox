@@ -869,7 +869,7 @@ class ChatMixin:
         self.post(self.ip_line(self.players[self.selected]))
 
     def fake_ip_of(self, p):
-        """The fake IPv4 this player gets (the Fake IPv4 button, !ip): drawn by fake_ipv4 the
+        """The fake IPv4 this player gets (the Send fake IP button, !ip): drawn by fake_ipv4 the
         first time, then the same one for as long as this match lasts. Kept in memory only:
         new_match and a disconnect forget them all, and nothing is ever saved."""
         key = str(p.sid)

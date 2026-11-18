@@ -59,7 +59,7 @@ class ScreensTest(unittest.TestCase):
             a = g.app
             self.assertEqual({b.cget("text") for b in a.lobby_buttons}, {"Kill race", "Lobby summary"})
             self.assertEqual(set(a.buttons), {"kick", "mark", "history", "mute", "say", "stats", "friends", "ip"})
-            self.assertNotIn("team_ip_key", a.cfg)  # F4 is gone; the Fake IPv4 button and !ip stay
+            self.assertNotIn("team_ip_key", a.cfg)  # F4 is gone; the Send fake IP button and !ip stay
             self.assertFalse(hasattr(a, "team_ips"))
             self.assertTrue(g.on_screen_thread(lambda: a.idle_button.winfo_toplevel() is a.root))
         Game().play(script)

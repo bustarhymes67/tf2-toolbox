@@ -53,6 +53,11 @@ from ui_shapes import round_window_corners
 from demo_check import (CHECK_NOW, DEMO_TOOL, STRONG_CHECKS, copy_lines, export_evidence, meaning_text, save_cheater_ticks, count_checks, demo_flags, demo_worker, demos_dir,
                         detections_path, save_detections, summary_text)
 
+# One match's chat lines and kill times kept for the live cheater clues: plenty for a match, and a
+# bound so a spam bot can't grow them without end.
+MATCH_CHAT_MAX = 3000
+MATCH_KILLS_MAX = 5000
+
 class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMixin):
     """The scanner itself: it reads TF2's output in handle_line, takes results from the background
     threads in handle_event, and keeps the list of players. Chat, duels, the AI and the screen
@@ -120,6 +125,7 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
         self.class_images = {}    # class -> tk.PhotoImage of TF2's scoreboard icon
         self.flags_requested = set()
         self.fake_ips = {}  # Steam ID -> fake IPv4, this match only (chat.fake_ip_of); never saved
+        self.forget_live_clues()  # this match's chat, name changes, spawns and kill times (live_clues.py)
         self.avatar_images = {}   # sid -> tk.PhotoImage of their Steam avatar, next to their name
         self.avatars_requested = set()  # (sid, picture address) already asked for
         self.marks = load_json(MARKS_PATH, {})
@@ -232,6 +238,8 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
                     self.lookups.put(sid)
                 if self.cfg["profile_keywords"]:
                     self.profile_lookups.put(sid)
+            elif p.name and p.name != m["name"]:
+                self.name_changes.setdefault(sid, []).append(p.name)  # renamed mid-match (live_clues)
             p.userid, p.name, p.ping = int(m["userid"]), m["name"], int(m["ping"])
             p.connected, p.snapshot = connected_seconds(m["connected"]), self.snapshot
             p.last_seen = time.time()
@@ -255,6 +263,7 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
             self.new_match()
         elif line.startswith("Disconnect"):
             self.fake_ips.clear()  # you left the server: its players' fake IPs go with it
+            self.forget_live_clues()
             self.forget_server()
             self.recording = False  # TF2 stops a recording when you leave
             self.left_server = True
@@ -269,6 +278,8 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
             self.dirty = True
         elif chat := parse_chat(line):  # before kills: "x :  I killed y with z." is chat
             me = self.players.get(self.me)
+            if len(self.match_chat) < MATCH_CHAT_MAX:  # for live_clues: who said what, this match only
+                self.match_chat.append((time.time(), self.sid_by_name(chat[0]), chat[0], chat[1]))
             # The translator reads chat from here, not from the file. Your own lines aren't passed on:
             # they're mostly the scanner's "X said: ..." posts, which would each cost a Google request.
             if live and self.translator_lines is not None and not (me and chat[0] == me.name):
@@ -297,6 +308,8 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
             elif live:
                 self.duel_kill(m, killer, victim)
             if live:
+                if killer and victim and killer != victim and len(self.kill_times) < MATCH_KILLS_MAX:
+                    self.kill_times.append((time.time(), killer, victim, m["weapon"]))  # for spawn kills
                 if victim and m["killer"] != m["victim"]:
                     self.last_death[victim] = (time.time(), m["killer"])  # for rage-quits
                 self.ez_kill(m)
@@ -343,6 +356,12 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
         self.refresh_board()
         self.check_rage_quits()
         now = time.time()
+        for sid, fields in self.board.items():
+            # Respawns: TF2 prints none, so a dead -> alive flip between two reads (3 s apart) is the spawn.
+            alive = fields.get("m_bAlive") == "true"
+            if alive and self.alive_before.get(sid) is False:
+                self.spawn_times.setdefault(sid, []).append(now)
+            self.alive_before[sid] = alive
         still_pending = []
         for d in self.pending_deaths:
             if now - d["time"] < 1:
@@ -377,6 +396,7 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
         TF2's own scoreboard. Duel scores carry on across matches. Nothing about the players
         is kept from one match to the next: their fake IPs are drawn again."""
         self.fake_ips.clear()
+        self.forget_live_clues()
         self.forget_server()  # the next status names the server again
         self.recording, self.flagged_gone_at = False, None  # a new map ends TF2's recording
         self.match_joined_at = time.time()
@@ -391,6 +411,15 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
         self.first_blood_open = True   # a fresh map: its first kill is first blood
         self.table_widest = 0          # new players, new names: the table may get narrower
         self.dirty = True
+
+    def forget_live_clues(self):
+        """This match's raw data for the live cheater clues (live_clues.py), kept in memory only and
+        dropped when the match ends or you leave, like fake_ips."""
+        self.match_chat = []    # (time, sid or None, name, message)
+        self.name_changes = {}  # sid -> their earlier names this match
+        self.spawn_times = {}   # sid -> times the scoreboard showed them alive again after being dead
+        self.alive_before = {}  # sid -> alive at the previous scoreboard read
+        self.kill_times = []    # (time, killer sid, victim sid, weapon), live kill-feed kills
 
     def forget_server(self):
         """You left the server, or joined another: its name and player count go."""

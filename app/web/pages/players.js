@@ -6,43 +6,80 @@
   const act = (...a) => LS.act(...a);
   const WIDTH = {Mark: 22, Ctry: 46, Class: 128, HP: 190, "K/D": 76, Streak: 96, Duel: 66, HS: 108,
                  Crit: 108, TF2: 86, Age: 74, Flags: 270, Profile: 200};
+  // While FLAGS is shown it takes what is left (its text ellipsizes first) and PLAYER keeps room
+  // for a name of about 18 characters plus a group chip; longer names end in "…" (full name on hover).
+  const PLAYER_MIN = 190;
+  const widthOf = (c, shown) => shown.includes("Flags")
+    ? (c === "Player" ? PLAYER_MIN : c === "Flags" ? 0 : WIDTH[c] || 0)
+    : WIDTH[c] || 0;
   let built = false, menuOpen = false;
   const last = {};
   // "Likely together" guesses: a small G1/G2 chip per group (its colour by number), and one
   // tooltip shared by every (Why?) and chip, placed in the window so the edge never cuts it.
-  let why = "", tip = null, tipOn = null, mouse = [0, 0];
+  // The cheater score's tooltip (cheat_score.py) uses the same box: hovering a player's row, a band
+  // chip or the panel's score shows how the score adds up, clue by clue.
+  let why = "", tip = null, tipOn = null, tipHTML = "", mouse = [0, 0];
+  let scores = {};  // sid -> the score's breakdown, from the last render
   const WHY = `<span class="pl-why" tabindex="0">(Why?)</span>`;
   const chip = n => `<span class="pl-grp g${(n - 1) % 6}">G${n}</span>`;
+  const TIPPED = ".pl-why,.pl-grp,.cs-band[data-sid],tr[data-sid]";
+
+  function scoreHTML(b) {
+    const rows = b.rows.map(r =>
+      `<div class="cs-r"><b class="${r.up ? "up" : "dn"}${r.proof ? " pf" : ""}">${esc(r.lr)}</b>` +
+      `<span>${esc(r.text)}<em> &mdash; ${esc(r.why)}</em></span></div>`).join("");
+    return `<div class="cs-s">${esc(b.start)}</div>${rows}` +
+      `<div class="cs-e">${esc(b.end)} <i>&rarr;</i> <b>${esc(b.pct)}</b> <span class="cs-w b-${b.band}">${esc(b.words)}</span></div>` +
+      (b.note ? `<div class="cs-n">${esc(b.note)}</div>` : "");
+  }
+
+  // What an anchor's tooltip says, or "" for none (you have no score).
+  function tipFor(anchor) {
+    if (anchor.matches(".pl-why,.pl-grp")) return esc(why);
+    const b = scores[anchor.dataset.sid];
+    return b ? scoreHTML(b) : "";
+  }
 
   function showTip(anchor) {
+    const html = tipFor(anchor);
+    if (!html) { hideTip(); return; }
     if (!tip) {
       tip = document.createElement("div");
-      tip.className = "pl-tip";
       tip.setAttribute("role", "tooltip");
       document.body.appendChild(tip);
     }
+    const row = anchor.matches("tr");
+    tip.className = "pl-tip" + (anchor.matches(".pl-why,.pl-grp") ? "" : " cs-tip");
+    if (html !== tipHTML || tip.style.display !== "block") { tip.innerHTML = html; tipHTML = html; }
+    const moved = tipOn !== anchor;
     tipOn = anchor;
-    tip.textContent = why;
     tip.style.display = "block";
+    if (!moved && tip.dataset.placed) return;  // same anchor, fresh numbers: stay where it is
     const r = anchor.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight, pad = 8;
     const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
-    let x = Math.min(Math.max(pad, r.left + r.width / 2 - w / 2), vw - w - pad);
+    // A row is as wide as the list: under it, where the mouse is; anything else: centred under it.
+    const cx = row ? mouse[0] - 40 : r.left + r.width / 2 - w / 2;
+    let x = Math.min(Math.max(pad, cx), vw - w - pad);
     let y = r.bottom + 6;
-    if (y + h > vh - pad) y = Math.max(pad, r.top - h - 6);
+    if (y + h > vh - pad) y = r.top - h - 6;
+    y = Math.min(Math.max(pad, y), vh - h - pad);
     tip.style.left = x + "px";
     tip.style.top = y + "px";
+    tip.dataset.placed = "1";
   }
 
   function hideTip() {
     tipOn = null;
-    if (tip) tip.style.display = "none";
+    if (tip) { tip.style.display = "none"; delete tip.dataset.placed; }
   }
 
   // After a re-render the hovered (Why?) may have been replaced: follow the mouse to its new copy.
   function refreshTip() {
-    if (!tipOn || tipOn.isConnected) return;
+    if (!tipOn) return;
+    if (tipOn.isConnected) { showTip(tipOn); return; }  // the score may have changed
     const el = document.elementFromPoint(mouse[0], mouse[1]);
-    const a = el && el.closest(".pl-why,.pl-grp");
+    const a = el && el.closest(TIPPED);
+    if (tip) delete tip.dataset.placed;
     a ? showTip(a) : hideTip();
   }
 
@@ -100,14 +137,15 @@
     });
     document.addEventListener("click", () => { if (menuOpen) { menuOpen = false; menu.hidden = true; } });
     sec.addEventListener("mouseover", e => {
-      const a = e.target.closest(".pl-why,.pl-grp");
-      if (a && a !== tipOn) showTip(a);
+      if (e.clientX || e.clientY) mouse = [e.clientX, e.clientY];
+      const a = e.target.closest(TIPPED);
+      if (a && a !== tipOn) { if (tip) delete tip.dataset.placed; showTip(a); }
     });
     sec.addEventListener("mouseout", e => {
-      const a = e.target.closest(".pl-why,.pl-grp");
+      const a = e.target.closest(TIPPED);
       if (a && a === tipOn && !a.contains(e.relatedTarget)) hideTip();
     });
-    sec.addEventListener("focusin", e => { if (e.target.matches(".pl-why")) showTip(e.target); });
+    sec.addEventListener("focusin", e => { if (e.target.matches(".pl-why,.cs-band[data-sid]")) showTip(e.target); });
     sec.addEventListener("focusout", e => { if (e.target === tipOn) hideTip(); });
     document.addEventListener("mousemove", e => { mouse = [e.clientX, e.clientY]; }, {passive: true});
     sec.querySelectorAll("[data-lobby]").forEach(b => b.addEventListener("click", () => act("players_lobby", b.dataset.lobby)));
@@ -132,7 +170,7 @@
 
   // --- the list ------------------------------------------------------------------------------
 
-  function cell(column, c) {
+  function cell(column, c, sc) {
     switch (column) {
       case "Mark":
         return `<span class="mark m-${c.m}" title="${esc(c.title)}"></span>`;
@@ -143,7 +181,7 @@
         if (!c.t) return "";
         return `<span class="cls">${c.img ? `<img class="pl-ci" src="${c.img}" alt="">` : ""}<span>${esc(c.t)}</span></span>`;
       case "Player":
-        return `<span class="pn ${c.you ? "you" : ""}">${esc(c.t)}${c.you ? "<small>(you)</small>" : ""}</span>`;
+        return `<span class="pn ${c.you ? "you" : ""}" title="${esc(c.t)}">${esc(c.t)}${c.you ? "<small>(you)</small>" : ""}</span>`;
       case "HP":
         if (c.pct === undefined) return c.t ? `<div class="hp"><span class="v" style="color:${c.c}">${esc(c.t)}</span></div>` : "";
         return `<div class="hp"><span class="v" style="color:${c.c}">${esc(c.t)}</span>` +
@@ -152,10 +190,16 @@
       case "K/D":
         return c.k === undefined ? "" :
           `<span class="kd"><span class="k">${esc(c.k)}</span><span class="s">/</span><span class="d">${esc(c.d)}</span></span>`;
-      case "Flags":
-        if (!c.t) return `<span class="noflag">&mdash;</span>`;
-        return `${c.tag ? `<span class="pl-stamp" style="color:${c.tag[1]}">${esc(c.tag[0])}</span>` : ""}` +
-               `<span class="pl-ftx" style="color:${c.c}" title="${esc(c.t)}">${esc(c.t)}</span>`;
+      case "Flags": {
+        // The score's band as a chip next to the stamp (hover the row for how it adds up).
+        // In the list only the percentage, in the band's colour (the band's name is in the tooltip and
+        // the panel), so the stamp and the flag's text keep their room.
+        const band = sc && sc.band !== "Clean" ? `<span class="cs-band cs-mini b-${sc.band}" title="${esc(sc.short)}">${esc(sc.pct)}</span>` : "";
+        if (!c.t) return band || `<span class="noflag">&mdash;</span>`;
+        // The band first: when the column is narrow, the score stays and the flag's text is cut.
+        return `${band}${c.tag ? `<span class="pl-stamp" style="color:${c.tag[1]}">${esc(c.tag[0])}</span>` : ""}` +
+               `<span class="pl-ftx" style="color:${c.c}">${esc(c.t)}</span>`;
+      }
       default:
         return `<span class="pl-oc" style="color:${c.c}" title="${esc(c.t)}">${esc(c.t)}</span>`;
     }
@@ -166,7 +210,7 @@
     const kind = t.colour === "BLU" ? "blu" : t.colour === "RED" ? "red" : "unk";
     const name = t.name.charAt(0) + t.name.slice(1).toLowerCase();
     const head = s.shown.map(c => {
-      const w = WIDTH[c] ? ` style="width:${WIDTH[c]}px"` : "";
+      const px = widthOf(c, s.shown), w = px ? ` style="width:${px}px"` : "";
       const arrow = s.sort && s.sort[0] === c ? (s.sort[1] ? " ▼" : " ▲") : "";
       return `<th${w} data-sort="${esc(c)}" class="${arrow ? "srt" : ""}">${esc(s.headers[c])}${arrow}</th>`;
     }).join("");
@@ -174,8 +218,10 @@
       if (r.sub) return `<tr class="pl-sub"><td colspan="${s.shown.length}">${esc(r.sub)}</td></tr>`;
       return `<tr data-sid="${r.sid}" class="${r.sel ? "sel" : ""}">` + idx.map((i, n) => {
         const c = s.shown[n];
-        const grp = c === "Player" && r.grp ? chip(r.grp) : "";
-        return `<td${c === "Mark" ? ' style="padding-right:0"' : ""}>${cell(c, r.cells[i])}${grp}</td>`;
+        const content = c === "Player"
+          ? `<span class="pl-pw">${cell(c, r.cells[i], r.score)}${r.grp ? chip(r.grp) : ""}</span>`
+          : cell(c, r.cells[i], r.score);
+        return `<td${c === "Mark" ? ' style="padding-right:0"' : ""}>${content}</td>`;
       }).join("") + "</tr>";
     }).join("");
     const lineup = t.lineup.map(([n, what]) => `<span class="lu">${n ? `<b>${esc(n)}</b> ` : ""}${esc(what)}</span>`).join("");
@@ -201,11 +247,16 @@
   // --- the selected player -------------------------------------------------------------------
 
   function detailHTML(p) {
-    const v = p.verdict
+    // The score's band in the verdict's place (hover it for how it adds up); you have no score.
+    const sc = p.score;
+    const v = sc
+      ? `<span class="verdict cs-band b-${sc.band}" data-sid="${p.sid}" tabindex="0">${esc(sc.pct)} ${esc(sc.short)}</span>`
+      : p.verdict
       ? `<span class="verdict" style="background:var(--${p.mark});color:#140505">${esc(p.verdict)}</span>`
       : `<span class="verdict" style="border:1px solid var(--ln2);color:var(--tx3)">CLEAN</span>`;
     const reasons = p.reasons.map(r =>
-      `<div class="reason"><span class="str ${r.cls}">${esc(r.level)}</span><p>${esc(r.text)}${r.why ? `<small>${esc(r.why)}</small>` : ""}</p></div>`).join("")
+      `<div class="reason"><span class="str ${r.cls}">${esc(r.level)}</span><p>${esc(r.text)}${r.why ? `<small>${esc(r.why)}</small>` : ""}</p>` +
+      `${r.lr ? `<span class="cs-lr ${r.up ? "up" : "dn"}" title="What this does to the odds">${esc(r.lr)}</span>` : ""}</div>`).join("")
       || `<div style="color:var(--tx3);font-size:12.5px">No flags.</div>`;
     const [acts, says] = p.actions;
     const actBtn = ([key, text, on]) =>
@@ -234,6 +285,9 @@
     if (!sec || s.error) return;
     if (!built) build(sec);
     why = s.together_why || "";
+    scores = {};
+    s.teams.forEach(t => t.rows.forEach(r => { if (r.score) scores[r.sid] = r.score; }));
+    if (s.panel && s.panel.score) scores[s.panel.sid] = s.panel.score;
     set(sec.querySelector("#pl-chips"), "chips", s.filters.map(f =>
       `<button class="chip ${f.key === s.filter ? "on" : ""}" data-f="${f.key}">${esc(f.text)}` +
       `${f.n ? ` <span class="n ${f.key === "cheaters" ? "r" : ""}">${f.n}</span>` : ""}</button>`).join(""));

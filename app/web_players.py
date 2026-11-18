@@ -3,8 +3,10 @@ search box, the Columns menu, both teams' lists and the selected player's panel.
 from App's own methods (screens.py); this only turns it into JSON for web/pages/players.js."""
 import base64
 import os
+import re
 from collections import Counter
 
+import cheat_score
 from game_log import CLASS_MAX_HEALTH
 from player_flags import flag_why, profile_flags
 from screens import (BLANK_CELLS, COLUMN_NAMES, COLUMNS, FILTERS, HEADERS, HIDEABLE_COLUMNS, PICKABLE_COLUMNS,
@@ -21,6 +23,19 @@ STRENGTH_CLASS = {"weak": "weak", "medium": "medium", "strong": "strong", "prove
                   "yours": "strong", "info": "info"}
 SIDE_WORDS = {"YOU": "You", "ALLY": "Team", "ENEMY": "Enemy", "?": "Team not known"}
 ACTION_METHODS = {key: method for _, entries in PLAYER_ACTIONS for key, _, method in entries}
+
+DEMO_PROOF_FLAG, DEMO_WEAK_FLAG = r"^demo check: (looked past|turned 180)", r"^demo check: \d"
+# The cheater score (cheat_score.py): which flags each clue key is about, so WHY FLAGGED can put the
+# clue's multiplier on its flag. A clue whose text is a flag's own text matches that flag first.
+CLUE_FLAGS = {
+    "lists": r"^on .* lists?\b", "marked": r"^marked by you", "bot_name": r"copied someone's name",
+    "bans": r"VAC ban|game ban", "community_ban": r"community banned", "server_bans": r"server bans?",
+    "experience": r"^new account|^only \d", "profile": r"private profile|never set up|level 0|limited account",
+    "profile_words": r"profile comment|^bio says", "friends": r"^secondhand cheater|^friends with (flagged|\d)",
+    "demo_weak": DEMO_WEAK_FLAG, "hs_record": r"headshots in one life", "hs_rate": r"% headshots", "crit_rate": r"crit kills",
+}
+# Short words for the band chip in the Flags column.
+BAND_SHORT = {"Clean": "CLEAN", "Watch": "WATCH", "Suspicious": "SUSP", "Likely": "LIKELY", "Proven": "PROVEN"}
 
 # "Likely together": TF2 doesn't tell clients who is in a party with whom, so players on the same
 # team who joined the server within this many seconds of each other are shown as a guess.
@@ -132,7 +147,55 @@ def lineup(app, group, strip):
     return pills
 
 
-def team_block(app, key, side, cells, groups):
+def score_json(app, p, sc):
+    """A row's score: the band chip and the tooltip's breakdown (None for you)."""
+    if p.sid == app.me:
+        return None
+    b = cheat_score.breakdown(sc)
+    b["short"] = BAND_SHORT.get(sc.band, "")
+    return b
+
+
+def flag_clue(text, clues):
+    """The clue a flag is about, or None."""
+    for c in clues:
+        if c.text == text:
+            return c
+    for c in clues:
+        pattern = CLUE_FLAGS.get(c.key)
+        if pattern is None and c.proof and c.key.startswith("demo"):
+            pattern = DEMO_PROOF_FLAG
+        if pattern and re.search(pattern, text, re.I):
+            return c
+    return None
+
+
+def reasons_json(app, p, sc):
+    """WHY FLAGGED: each flag with its strength and, when the score used it, the clue's multiplier
+    (once per clue); then the clues no flag shows (e.g. many hours lowering the odds)."""
+    reasons, used = [], set()
+    for sev, text in app.flags.get(p.sid, []) + profile_flags(p.profile):
+        level, why = flag_why(sev, text)
+        c = flag_clue(text, sc.clues)
+        lr = None
+        if c and c.key not in used:
+            used.add(c.key)
+            lr = cheat_score.lr_text(c.lr)
+        reasons.append({"level": level.upper(), "cls": STRENGTH_CLASS.get(level, "weak"), "text": text, "why": why,
+                        "lr": lr, "up": bool(c and c.lr >= 1)})
+    rest = [c for c in sc.clues if c.key not in used]
+    for c in rest:
+        if not cheat_score.is_small(c):
+            reasons.append({"level": "SCORE", "cls": "info", "text": c.text, "why": c.why,
+                            "lr": cheat_score.lr_text(c.lr), "up": c.lr >= 1})
+    small = cheat_score.small_row(rest)  # the tiny ones (x0.9-x1.1) as one line, like the tooltip
+    if small:
+        reasons.append({"level": "SCORE", "cls": "info", "text": small["text"], "why": small["why"],
+                        "lr": small["lr"], "up": small["up"]})
+    return reasons
+
+
+def team_block(app, key, side, cells, groups, scores):
     """One of App.team_sides' halves as a block on the page."""
     title, _, entries, strip = side
     if not entries:
@@ -151,6 +214,7 @@ def team_block(app, key, side, cells, groups):
             continue
         p = e[1]
         rows.append({"sid": str(p.sid), "sel": p.sid == app.selected, "grp": group_of.get(str(p.sid)),
+                     "score": score_json(app, p, scores[p.sid]),
                      "cells": [cell_json(app, p, c, cell) for c, cell in zip(COLUMNS, cells[p.sid])]})
     return {"key": key, "name": name, "colour": colour, "count": len(own),
             "flagged": sum(1 for p in own if worst(app, p) >= 1), "lineup": lineup(app, players, strip), "rows": rows,
@@ -163,7 +227,7 @@ def together(p, groups):
     return g and {"n": g["n"], "names": [name for sid, name in zip(g["sids"], g["names"]) if sid != str(p.sid)]}
 
 
-def panel(app, groups):
+def panel(app, groups, scores):
     """The selected player's panel, or None while nobody is selected."""
     p = app.players.get(app.selected)
     if not p:
@@ -172,10 +236,8 @@ def panel(app, groups):
     team = app.team_of(p)
     hp, hp_fg = app.health_cell(p)
     kills, deaths = app.board_int(p.sid, "m_iScore"), app.board_int(p.sid, "m_iDeaths")
-    reasons = []
-    for sev, text in app.flags.get(p.sid, []) + profile_flags(p.profile):
-        level, why = flag_why(sev, text)
-        reasons.append({"level": level.upper(), "cls": STRENGTH_CLASS.get(level, "weak"), "text": text, "why": why})
+    sc = scores.get(p.sid) or cheat_score.score(app, p)
+    reasons = reasons_json(app, p, sc)
     # player_details without the team and class the line above already shows.
     about = app.player_details(p).split(" · ")
     about = [part for part in about if part not in (team, app.player_class(p))]
@@ -189,7 +251,7 @@ def panel(app, groups):
         "side": SIDE_WORDS[team], "cls": app.player_class(p), "about": " · ".join(about),
         "kd": f"{kills}/{deaths}" if kills is not None or deaths is not None else "",
         "ratio": f"{(kills or 0) / max(1, deaths or 0):.2f}" if kills is not None or deaths is not None else "",
-        "hp": hp, "hp_c": hp_fg, "reasons": reasons,
+        "hp": hp, "hp_c": hp_fg, "reasons": reasons, "score": score_json(app, p, sc),
         "together": together(p, groups),
         "actions": [[[key, labels.get(key, text), key in enabled] for key, text, _ in entries]
                     for _, entries in PLAYER_ACTIONS],
@@ -201,10 +263,15 @@ def players_state(app):
     """The same list App.render draws: chips with counts, who's shown, which columns, both teams."""
     everyone = app.sorted_players()
     others = [p for p in everyone if p.sid != app.me]
-    counts = {name: sum(app.matches_filter(p, name) for p in others) for name, _ in FILTERS[1:]}
+    scores = {p.sid: cheat_score.score(app, p) for p in everyone}
+
+    def matches(p, name):
+        # Cheaters: the old rule (a red flag or your mark) or the score's band Likely / Proven.
+        return cheat_score.is_cheater(app, p, scores[p.sid]) if name == "cheaters" else app.matches_filter(p, name)
+    counts = {name: sum(matches(p, name) for p in others) for name, _ in FILTERS[1:]}
     counts["all"] = len(everyone)
     chosen = app.cfg["player_filter"]
-    players = [p for p in everyone if p.sid == app.me or app.matches_filter(p, chosen)]
+    players = [p for p in everyone if p.sid == app.me or matches(p, chosen)]
     if app.search:
         players = [p for p in players if app.search in p.name.casefold()]
     empty = "" if players else ("Nobody here matches that." if everyone
@@ -218,7 +285,7 @@ def players_state(app):
     teams = []
     if players:
         sides = app.team_sides(players)
-        teams = [b for b in (team_block(app, key, side, cells, groups) for key, side in sides.items()) if b]
+        teams = [b for b in (team_block(app, key, side, cells, groups, scores) for key, side in sides.items()) if b]
     return {
         "filter": chosen,
         "filters": [{"key": key, "text": text, "n": counts.get(key, 0)} for key, text in FILTERS],
@@ -234,7 +301,7 @@ def players_state(app):
         "severity_colours": {str(k): v for k, v in SEVERITY_FG.items()},
         "groups": groups,
         "together_why": TOGETHER_WHY,
-        "panel": panel(app, groups),
+        "panel": panel(app, groups, scores),
     }
 
 

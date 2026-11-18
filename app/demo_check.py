@@ -383,6 +383,20 @@ def tidy_finished(dem_path, detections, keep_only_cheaters):
     return "deleted"
 
 
+def aim_check(path, finished):
+    """The aim clues (demo_clues.py) on the same demo: a demo being recorded is queued for their own
+    background thread (at most every few minutes); a finished one is read now, before it may be
+    deleted. Nothing here raises."""
+    try:
+        import demo_clues
+    except ImportError:
+        return
+    if finished:
+        demo_clues.analyse(path)
+    else:
+        demo_clues.request(path)
+
+
 def demo_worker(cfg, events):
     """Background thread: checks the demo being recorded every DEMO_CHECK_SECONDS, and each demo
     once more when it's finished. Only demos seen being recorded while the scanner ran are ever
@@ -432,6 +446,7 @@ def demo_worker(cfg, events):
                     events.put(("demo_state", f"couldn't read {name}: {e}"))
                     continue
                 checked[name] = stamp, result
+            aim_check(path, finished)
             outcome = None
             if finished:
                 watched.discard(name)

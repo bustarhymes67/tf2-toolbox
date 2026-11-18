@@ -88,7 +88,7 @@ PLAYER_ACTIONS = (
     ("Act on them", (("kick", "Votekick", "votekick"), ("mark", "Mark cheater", "toggle_mark"),
                      ("history", "SteamHistory", "open_steamhistory"), ("mute", "Mute !speak", "toggle_speak_mute"))),
     ("Say in chat", (("say", "Summary", "say_in_chat"), ("stats", "Stats", "say_stats"),
-                     ("friends", "Friends", "say_friends"), ("ip", "Fake IPv4", "say_ip"))),
+                     ("friends", "Friends", "say_friends"), ("ip", "Send fake IP", "say_ip"))),
 )
 
 
@@ -533,8 +533,10 @@ class ScreensMixin:
         flags = self.flags.get(p.sid, [])
         if name == "flagged":
             return any(severity >= 1 for severity, _ in flags)
-        if name == "cheaters":  # a red flag (a ban, a cheater list, a proven demo check), or marked by you
-            return any(severity >= 3 for severity, _ in flags) or str(p.sid) in self.marks
+        if name == "cheaters":  # a red flag (a ban, a cheater list, a proven demo check), marked by you,
+            # or the cheater score says Likely / Proven: the same rule as the web window's Cheaters chip
+            import cheat_score
+            return cheat_score.is_cheater(self, p)
         if name == "new":
             return any(text == "new account" for _, text in flags)
         return True
