@@ -59,7 +59,7 @@ class WebPlayersTest(unittest.TestCase):
             cells = dict(zip(s["all_columns"], dan["cells"]))
             self.assertEqual(cells["Mark"]["m"], "red")
             self.assertEqual(cells["Flags"]["tag"][0], "BANNED")
-            self.assertEqual(cells["Flags"]["t"], "VAC ban  +1")
+            self.assertNotIn("t", cells["Flags"])  # only the stamp (and the score's chip): no cut-off reason text
             self.assertEqual((cells["HP"]["t"], cells["HP"]["max"], cells["HP"]["pct"]), ("125", 125, 100))
             self.assertEqual((cells["K/D"]["k"], cells["K/D"]["d"]), ("14", "1"))
             self.assertTrue(cells["Class"]["img"].startswith("data:image/png;base64,"))
@@ -113,26 +113,31 @@ class WebPlayersTest(unittest.TestCase):
                 return g.on_screen_thread(lambda: web_players.players_state(a))
             s = run("players_select", str(DAN))
             p = s["panel"]
-            self.assertEqual((p["name"], p["verdict"], p["side"], p["cls"], p["enemy"]), ("dan", "CHEATER", "Enemy", "Sniper", True))
-            self.assertEqual((p["kd"], p["ratio"], p["hp"]), ("14/1", "14.00", "125"))
-            self.assertEqual([(r["level"], r["text"]) for r in p["reasons"]], [("PROVEN", "VAC ban"), ("MEDIUM", "92% headshots")])
-            buttons = {key: (text, on) for group in p["actions"] for key, text, on in group}
+            self.assertEqual((p["name"], p["side"], p["cls"], p["enemy"]), ("dan", "Enemy", "Sniper", True))
+            self.assertNotIn("kd", p)  # K/D and HP are in the row; the ratio is on the about line
+            self.assertIn("K/D ratio 14.00", p["about"])
+            # every flag is a clue line with a multiplier (here x1: no ban data or kills behind them)
+            self.assertEqual({r["text"] for r in p["reasons"]}, {"VAC ban", "92% headshots"})
+            self.assertTrue(all(r["lr"].startswith("×") and "level" not in r for r in p["reasons"]))
+            buttons = {key: (text, on) for group in p["actions"] for key, text, on, _ in group}
             self.assertEqual(buttons["kick"], ("Votekick", False))  # an enemy: votes only work on your team
             self.assertTrue(buttons["mark"][1] and buttons["history"][1] and buttons["say"][1])
             self.assertTrue(next(r for r in rows(s) if r["sid"] == str(DAN))["sel"])
             s = run("players_act", "mark")
             self.assertIn(str(DAN), a.marks)
-            self.assertEqual({k: t for g_ in s["panel"]["actions"] for k, t, _ in g_}["mark"], "Unmark")
+            self.assertEqual({k: t for g_ in s["panel"]["actions"] for k, t, *_ in g_}["mark"], "Unmark as cheater")
+            first = s["panel"]["reasons"][0]  # your mark: a clue line of its own, first, labelled as yours
+            self.assertEqual((first["you"], first["text"], first["lr"]), (True, "cheater", "×150"))
             run("players_act", "mark")
             s = run("players_act", "mute")
             self.assertIn(DAN, a.cfg["speak_muted"])
-            self.assertEqual({k: t for g_ in s["panel"]["actions"] for k, t, _ in g_}["mute"], "Unmute !speak")
+            self.assertEqual({k: t for g_ in s["panel"]["actions"] for k, t, *_ in g_}["mute"], "Allow their !speak")
             run("players_act", "mute")
             g.sent.clear()
             run("players_act", "say")
             self.assertTrue(g.commands.qsize() or g.sent)
             s = run("players_select", str(HANK))
-            self.assertEqual((s["panel"]["side"], s["panel"]["verdict"], s["panel"]["reasons"]), ("Team", None, []))
+            self.assertEqual((s["panel"]["side"], s["panel"]["reasons"]), ("Team", []))
             self.assertNotIn("seen", s["panel"])  # nothing remembered from earlier matches
             s = run("players_deselect")
             self.assertIsNone(s["panel"])

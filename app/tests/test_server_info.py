@@ -54,9 +54,6 @@ class ServerInAppTest(unittest.TestCase):
             h = header()
             self.assertEqual((h["server"], h["slots"], h["map"]), ("Casual · Frankfurt", "24/24", "ctf_2fort"))
             self.assertEqual((h["hostname"], h["foot"]["server"]), (VALVE, VALVE))
-            g.on_screen_thread(a.update_status)
-            self.assertEqual(g.on_screen_thread(lambda: a.info.cget("text")),
-                             "ctf_2fort · Casual · Frankfurt · 24/24 players")
 
             # A new server (or map): forgotten until its status names it.
             feed("Client reached server_spawn.")

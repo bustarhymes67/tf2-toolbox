@@ -1,16 +1,12 @@
-"""TF2 chat translator overlay.
-
-Tails TF2's console.log (needs the -condebug launch option), translates chat
-lines that contain Cyrillic or Turkish, and shows them in a click-through overlay.
-
-Run:  python tf2_translator.py
-      (TF2 Toolbox also starts it, so with the scanner you don't need this)
+"""TF2 Toolbox's chat translator: translates chat lines in other languages and shows them in a
+click-through overlay over the game. The toolbox (tf2_lobby_scanner.py) starts it and hands it the
+chat lines it reads from TF2; its settings are the toolbox's translator_... settings (settings.py).
 
 Press F8 (anywhere, even in game) to unlock the overlay:
   drag            move it (position is saved when you lock it again)
   left-click      copy that line's translation, as "name: translation"
   right-click     copy the original message, as "name: original"
-  middle-click    say the translation in chat (only when started by TF2 Toolbox)
+  middle-click    say the translation in chat
 Press F8 again to lock it (click-through again).
 """
 
@@ -24,25 +20,10 @@ import sys
 import threading
 import time
 import tkinter as tk
+import tkinter.font as tkfont
 import urllib.error
 import urllib.parse
 import urllib.request
-
-HERE = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH = os.path.join(HERE, "config.json")
-
-DEFAULTS = {
-    "log_path": r"C:\Program Files (x86)\Steam\steamapps\common\Team Fortress 2\tf\console.log",
-    "target_lang": "en",
-    "languages": "all",        # "russian": only lines in the Russian alphabet; "all": every language (overlay buttons)
-    "toggle_key": "F8",
-    "x": 20,
-    "y": 520,
-    "width": 620,
-    "max_lines": 6,
-    "line_seconds": 15,
-    "font_size": 13,
-}
 
 CHAT_RE = re.compile(
     r"^(?P<dead>\*DEAD\*|\*SPEC\*)?\s*(?P<team>\(TEAM\))?\s*(?P<name>.+?) :  (?P<msg>.+)$"
@@ -130,20 +111,23 @@ def turkish_spelling(msg):
 
 
 KEY_COLOR = "#010101"  # painted pixels of this color become transparent
-UNLOCKED_BG = "#1e1e1e"
+
+# The overlay's look: the Tactical style of TF2 Toolbox's window (the same colours as its settings.py).
+UNLOCKED_BG = "#07090c"   # the whole window while it's unlocked (F8)
+LINE_BG = "#05070a"       # the dark box behind each line, so it reads on any map
+EDGE = "#283342"          # thin lines: the unlocked window's outline, the buttons
+ACCENT = "#2de2c8"        # the bar left of each line, the language tag, the chosen button
+ON_ACCENT = "#03211d"     # dark text on the accent
+LINE_TEXT = "#f1f4f6"     # the translation
+NAME_FG = "#a3b0be"       # who said it (all chat)
+TEAM_FG = "#3fdc8a"       # who said it, and the TEAM tag, in team chat
+HINT_FG = "#7b8996"       # the unlocked window's help line
+UI_FONT = "Bahnschrift"
+NAME_FONT = "Bahnschrift SemiBold"
+LABEL_FONT = "Bahnschrift SemiBold SemiConden"
+MONO_FONTS = ("Cascadia Mono", "Consolas")
+BRACKET = 8               # the accent corners of the unlocked window
 HISTORY_SIZE = 50
-
-
-def load_config():
-    cfg = dict(DEFAULTS)
-    try:
-        with open(CONFIG_PATH, encoding="utf-8") as f:
-            cfg.update(json.load(f))
-    except (OSError, ValueError):
-        pass
-    if cfg.pop("only_cyrillic", False):  # the switch from before the overlay's buttons
-        cfg["languages"] = "russian"
-    return cfg
 
 
 def on_screen(x, y):
@@ -153,11 +137,6 @@ def on_screen(x, y):
 
 # The overlay's two buttons (shown while it's unlocked): setting value -> its text.
 LANGUAGE_MODES = {"russian": "Russian only", "all": "All languages"}
-
-
-def save_config(cfg):
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
 
 
 def parse_chat(line):
@@ -427,7 +406,7 @@ def worker(cfg, lines, results):
         if msg.lstrip().lower().startswith(("!speak", "!who", "!check", "!medic", "!top", "!kd", "!hours", "!ip",
                                             "!cheaters", "!help", "!kick")):  # TF2 Toolbox answers those itself
             continue
-        if cfg["languages"] == "russian" and not CYRILLIC_RE.search(msg):
+        if cfg["translator_languages"] == "russian" and not CYRILLIC_RE.search(msg):
             continue  # Russian only: a line without the Russian alphabet isn't sent anywhere
         hidden, names = hide_names(msg)
         rest = hidden
@@ -435,17 +414,17 @@ def worker(cfg, lines, results):
             rest = rest.replace(mark, " ")
         if not WORD_RE.search(rest):
             continue  # only names (and punctuation): nothing to translate
-        if cfg["target_lang"] == "en" and looks_english(rest):  # not worth one of Google's requests
+        if cfg["translator_target_lang"] == "en" and looks_english(rest):  # not worth one of Google's requests
             continue
         try:
-            text, lang = translate_chat(hidden, cfg["target_lang"])
+            text, lang = translate_chat(hidden, cfg["translator_target_lang"])
             text = show_names(text, names)
         except Exception:
             # Only lines that surely aren't English say they failed: the rest are most likely English.
             if not (CYRILLIC_RE.search(msg) or turkish(msg)):
                 continue
             text, lang = msg + "  (translation failed)", "?"
-        if lang == cfg["target_lang"]:
+        if lang == cfg["translator_target_lang"]:
             continue
         if lang != "?" and not CYRILLIC_RE.search(msg) and not_really_foreign(msg, text):
             continue
@@ -481,6 +460,11 @@ def hotkey_listener(vk, on_press, name="the toggle key"):
             on_press()
 
 
+def spaced(text):
+    """Capitals with a little room between the letters, like TF2 Toolbox's labels."""
+    return "\u200a".join(text.upper())
+
+
 def set_click_through(root, enabled):
     user32 = ctypes.windll.user32
     hwnd = user32.GetParent(root.winfo_id())
@@ -494,10 +478,11 @@ def set_click_through(root, enabled):
 
 
 class Overlay:
-    def __init__(self, cfg, master=None):
-        """master: another program's Tk window to live in (TF2 Toolbox),
-        so both run in one process instead of each needing its own."""
+    def __init__(self, cfg, master, save=None):
+        """cfg: the toolbox's settings (its translator_... ones are the overlay's); master: the
+        toolbox's Tk root, which the overlay lives in; save(cfg) saves the settings."""
         self.cfg = cfg
+        self.save = save or (lambda cfg: None)
         self.history = []   # newest last; each entry is a result dict plus "expires"
         self.unlocked = False
         self.status = ""    # short feedback shown in unlocked mode, e.g. "Copied"
@@ -505,20 +490,25 @@ class Overlay:
         self.on_say = None  # set by TF2 Toolbox: says an entry in chat over RCON
         self.on_add = None  # set by TF2 Toolbox: gets each new translation
 
-        self.root = root = tk.Toplevel(master) if master else tk.Tk()
+        self.root = root = tk.Toplevel(master)
         root.overrideredirect(True)
         root.attributes("-topmost", True)
-        self.line_h = cfg["font_size"] * 2 + 6
-        height = (cfg["max_lines"] + 1) * self.line_h + 10
-        if not on_screen(cfg["x"] + 40, cfg["y"] + 10):
-            cfg["x"], cfg["y"] = 20, 520  # its monitor isn't connected now: back to the main screen
-        root.geometry(f"{cfg['width']}x{height}+{cfg['x']}+{cfg['y']}")
+        self.line_h = cfg["translator_font_size"] * 2 + 6
+        height = (cfg["translator_max_lines"] + 1) * self.line_h + 10
+        if not on_screen(cfg["translator_x"] + 40, cfg["translator_y"] + 10):
+            cfg["translator_x"], cfg["translator_y"] = 20, 520  # its monitor isn't connected now: back to the main screen
+        root.geometry(f"{cfg['translator_width']}x{height}+{cfg['translator_x']}+{cfg['translator_y']}")
         root.configure(bg=KEY_COLOR)
         root.attributes("-transparentcolor", KEY_COLOR)
         self.canvas = c = tk.Canvas(root, bg=KEY_COLOR, highlightthickness=0)
         c.pack(fill="both", expand=True)
-        self.font = ("Segoe UI Semibold", cfg["font_size"])
-        self.small_font = ("Segoe UI", max(9, cfg["font_size"] - 3))
+        size = cfg["translator_font_size"]
+        mono = next((f for f in MONO_FONTS if f in tkfont.families(root)), "Consolas")
+        self.font = tkfont.Font(root, family=UI_FONT, size=size)
+        self.name_font = tkfont.Font(root, family=NAME_FONT, size=size)
+        self.tag_font = tkfont.Font(root, family=mono, size=max(8, size - 4), weight="bold")
+        self.small_font = tkfont.Font(root, family=LABEL_FONT, size=max(9, size - 3))
+        self.kbd_font = tkfont.Font(root, family=mono, size=max(8, size - 4))
 
         c.bind("<ButtonPress-1>", self._press)
         c.bind("<B1-Motion>", self._motion)
@@ -536,8 +526,8 @@ class Overlay:
         set_click_through(self.root, not self.unlocked)
         self.canvas.configure(bg=UNLOCKED_BG if self.unlocked else KEY_COLOR)
         if not self.unlocked:
-            self.cfg["x"], self.cfg["y"] = self.root.winfo_x(), self.root.winfo_y()
-            save_config(self.cfg)
+            self.cfg["translator_x"], self.cfg["translator_y"] = self.root.winfo_x(), self.root.winfo_y()
+            self.save(self.cfg)
         self.redraw()
 
     # --- mouse (only reaches us while unlocked) --------------------------------
@@ -556,9 +546,9 @@ class Overlay:
 
     def set_languages(self, mode):
         """A button: Russian only, or All languages. Saved, and used from the next chat line."""
-        if mode in LANGUAGE_MODES and mode != self.cfg["languages"]:
-            self.cfg["languages"] = mode
-            save_config(self.cfg)
+        if mode in LANGUAGE_MODES and mode != self.cfg["translator_languages"]:
+            self.cfg["translator_languages"] = mode
+            self.save(self.cfg)
             self._show_status(f"Translating: {LANGUAGE_MODES[mode].lower()}")
 
     def _press(self, e):
@@ -617,7 +607,7 @@ class Overlay:
     # --- drawing -------------------------------------------------------------
 
     def add(self, entry):
-        entry["expires"] = time.time() + self.cfg["line_seconds"]
+        entry["expires"] = time.time() + self.cfg["translator_line_seconds"]
         self.history = (self.history + [entry])[-HISTORY_SIZE:]
         self.redraw()
         if self.on_add:
@@ -629,47 +619,90 @@ class Overlay:
         items = list(enumerate(self.history))
         if not self.unlocked:
             items = [(i, e) for i, e in items if e["expires"] > now]
-        return items[-self.cfg["max_lines"]:]
+        return items[-self.cfg["translator_max_lines"]:]
 
     def redraw(self):
         c = self.canvas
         c.delete("all")
-        wrap = self.cfg["width"] - 10
         top_limit = 0
         if self.unlocked:
-            key = self.cfg["toggle_key"]
-            hint = self.status or f"{key}: lock  ·  drag: move  ·  click: copy  ·  right-click: original"
-            c.create_text(6, 4, text=hint, anchor="nw", font=self.small_font,
-                          fill="#7CFC9A" if self.status else "#bbbbbb")
-            # The two buttons, right of the hint: the chosen one lit up.
-            x = self.cfg["width"] - 6
-            for mode in reversed(LANGUAGE_MODES):
-                on = self.cfg["languages"] == mode
-                label = c.create_text(x - 8, 6, text=LANGUAGE_MODES[mode], anchor="ne", font=self.small_font,
-                                      fill="#ffffff" if on else "#bbbbbb", tags=(f"mode_{mode}",))
-                x0, y0, x1, y1 = c.bbox(label)
-                box = c.create_rectangle(x0 - 8, y0 - 2, x1 + 8, y1 + 2, fill="#5b8cff" if on else "#2a2f38",
-                                         outline="", tags=(f"mode_{mode}",))
-                c.tag_lower(box, label)
-                x = x0 - 22
-            top_limit = self.line_h + 4
+            top_limit = self._draw_unlocked()
         y = c.winfo_height() - 5
         for i, e in reversed(self.visible()):
-            label = f"[{e['lang'].upper()}]{' (TEAM)' if e['team'] else ''} {e['name']}: {e['text']}"
-            # Shadow first, then text, so it stays readable on any background.
-            shadow = c.create_text(6, y + 1, text=label, anchor="sw", width=wrap,
-                                   font=self.font, fill="black", tags=(f"e{i}",))
-            c.create_text(5, y, text=label, anchor="sw", width=wrap, tags=(f"e{i}",),
-                          font=self.font, fill="#ffd866" if e["team"] else "#9fe7ff")
-            top = c.bbox(shadow)[1]
+            top = self._draw_line(i, e, y)
             if top < top_limit:
                 c.delete(f"e{i}")
                 break
             y = top - 4
 
-    def run(self, results, toggles):
-        self.start(results, toggles)
-        self.root.mainloop()
+    def _draw_unlocked(self):
+        """The unlocked window: an outline with accent corners, the help line (or what just
+        happened) and the two buttons. Returns where the lines may start."""
+        c = self.canvas
+        w, h = self.cfg["translator_width"], c.winfo_height()
+        c.create_rectangle(0, 0, w - 1, h - 1, outline=EDGE)
+        for x, y, dx, dy in ((0, 0, 1, 1), (w - 1, h - 1, -1, -1)):
+            c.create_line(x, y + dy * BRACKET, x, y, x + dx * BRACKET, y, fill=ACCENT)
+        mid = 8 + self.small_font.metrics("linespace") // 2
+        # The two buttons on the right, side by side in one outline; the chosen one lit up.
+        x = w - 8
+        for mode in reversed(LANGUAGE_MODES):
+            on = self.cfg["translator_languages"] == mode
+            label = c.create_text(x - 10, mid, text=spaced(LANGUAGE_MODES[mode]), anchor="e", font=self.small_font,
+                                  fill=ON_ACCENT if on else NAME_FG, tags=(f"mode_{mode}",))
+            x0 = c.bbox(label)[0] - 10
+            box = c.create_rectangle(x0, mid - 11, x, mid + 11, fill=ACCENT if on else UNLOCKED_BG,
+                                     outline=EDGE, tags=(f"mode_{mode}",))
+            c.tag_lower(box, label)
+            x = x0
+        left_of_buttons = x - 10
+        if self.status:
+            c.create_text(10, mid, text=spaced(self.status), anchor="w", font=self.small_font, fill=ACCENT)
+        else:
+            key = c.create_text(14, mid, text=self.cfg["translator_toggle_key"], anchor="w", font=self.kbd_font, fill=LINE_TEXT)
+            x0, y0, x1, y1 = c.bbox(key)
+            c.tag_lower(c.create_rectangle(10, y0 - 1, x1 + 4, y1 + 2, fill="#10151c", outline=EDGE), key)
+            hint = c.create_text(x1 + 12, mid, text=spaced("lock · drag: move · click: copy · right-click: original"),
+                                 anchor="w", font=self.small_font, fill=HINT_FG)
+            for shorter in ("LOCK · DRAG: MOVE · CLICK: COPY · RIGHT-CLICK: ORIGINAL",  # a narrow overlay
+                            spaced("lock · drag: move · click: copy"), "LOCK · DRAG: MOVE · CLICK: COPY"):
+                if c.bbox(hint)[2] <= left_of_buttons:
+                    break
+                c.itemconfigure(hint, text=shorter)
+        return mid + 11 + 8
+
+    def _draw_line(self, i, e, bottom):
+        """One translated line ending at bottom: a dark box with an accent bar on the left, the
+        language as a small tag, who said it and the translation (wrapping under itself).
+        Everything is tagged e<i>, so a click anywhere on it copies it. Returns its top."""
+        c = self.canvas
+        tag = f"e{i}"
+        pad, x = 5, 13
+        mid = pad + self.font.metrics("linespace") // 2
+        item = c.create_text(x + 5, mid, text=e["lang"].upper(), anchor="w", font=self.tag_font,
+                             fill=ON_ACCENT, tags=(tag,))
+        x0, y0, x1, y1 = c.bbox(item)
+        c.tag_lower(c.create_rectangle(x, y0 - 1, x1 + 5, y1 + 1, fill=ACCENT, outline="", tags=(tag,)), item)
+        x = x1 + 13
+        if e["team"]:
+            item = c.create_text(x + 5, mid, text="TEAM", anchor="w", font=self.tag_font, fill=TEAM_FG, tags=(tag,))
+            x0, y0, x1, y1 = c.bbox(item)
+            c.create_rectangle(x, y0 - 1, x1 + 5, y1 + 1, outline=TEAM_FG, tags=(tag,))
+            x = x1 + 13
+        item = c.create_text(x, pad, text=e["name"], anchor="nw", font=self.name_font,
+                             fill=TEAM_FG if e["team"] else NAME_FG, tags=(tag,))
+        x = c.bbox(item)[2] + 8
+        wrap = max(self.cfg["translator_width"] - 15 - x, 150)
+        item = c.create_text(x, pad, text=e["text"], anchor="nw", width=wrap, font=self.font,
+                             fill=LINE_TEXT, tags=(tag,))
+        _, _, right, low = c.bbox(tag)
+        height = low + pad
+        box = c.create_rectangle(5, 0, min(right + 10, self.cfg["translator_width"] - 1), height, fill=LINE_BG, outline="",
+                                 tags=(tag,))
+        c.create_rectangle(5, 0, 7, height, fill=ACCENT, outline="", tags=(tag,))
+        c.tag_lower(box)
+        c.move(tag, 0, bottom - height)
+        return bottom - height
 
     def start(self, results, toggles):
         """Schedules the overlay's updates on the Tk loop that's already running."""
@@ -697,40 +730,16 @@ class Overlay:
         keep_on_top()
 
 
-def start_translator(master=None, chat_lines=None):
-    """Starts reading chat and translating it. With master (TF2 Toolbox's
-    window) the overlay joins that program; returns the overlay and its queues.
-    chat_lines: a queue the caller fills with console.log's chat lines, so the file
-    isn't read twice; without it the translator reads console.log itself."""
-    cfg = load_config()
-    vk = key_to_vk(cfg["toggle_key"])
-    if not os.path.exists(cfg["log_path"]):
-        print(f"Waiting for {cfg['log_path']}")
-        print("Make sure TF2 has -condebug in its launch options.")
-    lines, results, toggles = chat_lines or queue.Queue(), queue.Queue(), queue.Queue()
-    if chat_lines is None:
-        threading.Thread(target=tail, args=(cfg["log_path"], lines), daemon=True).start()
-    threading.Thread(target=worker, args=(cfg, lines, results), daemon=True).start()
-    threading.Thread(target=hotkey_listener, args=(vk, lambda: toggles.put(1)), daemon=True).start()
-    print(f"Translator running. Press {cfg['toggle_key']} to unlock/lock the translation overlay.")
-    overlay = Overlay(cfg, master)
-    if master:
-        overlay.start(results, toggles)
+def start_translator(cfg, master, chat_lines, save=None):
+    """Starts translating the chat lines the toolbox puts in chat_lines, in an overlay living in
+    master (the toolbox's Tk root). cfg: the toolbox's settings; save(cfg) saves them. Returns
+    the overlay and its queues."""
+    vk = key_to_vk(cfg["translator_toggle_key"])
+    results, toggles = queue.Queue(), queue.Queue()
+    threading.Thread(target=worker, args=(cfg, chat_lines, results), daemon=True).start()
+    threading.Thread(target=hotkey_listener, args=(vk, lambda: toggles.put(1), "the translator's key"),
+                     daemon=True).start()
+    print(f"Translator running. Press {cfg['translator_toggle_key']} to unlock/lock the translation overlay.")
+    overlay = Overlay(cfg, master, save)
+    overlay.start(results, toggles)
     return overlay, results, toggles
-
-
-def main():
-    single_instance("tf2_chat_translator")
-    try:  # run on its own: the DeepL key TF2 Toolbox's setup saved
-        import settings
-        KEYS.update(settings.load_json(settings.CONFIG_PATH, {}))
-        KEYS.update(settings.load_secrets())
-    except Exception:
-        pass
-    overlay, results, toggles = start_translator()
-    print("Close this window to stop.")
-    overlay.run(results, toggles)
-
-
-if __name__ == "__main__":
-    main()

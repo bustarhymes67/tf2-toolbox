@@ -43,7 +43,7 @@ KILL_RATE_MIN_MINUTES = 5     # less than this is too noisy (one good life is 5 
 KILL_RATE_MIN_KILLS = 8
 KILL_RATE_MIN_LOBBY = 6       # players with 5+ minutes needed for a median and a spread
 KILL_RATE_Z_START = 3.5       # Iglewicz and Hoaglin's usual cut-off for an outlier on this scale
-KILL_RATE_MAX_LR = 5.0
+KILL_RATE_MAX_LR = 5.0        # LR_RESEARCH s12 (kept): PUBG cheaters' kill ratio 0.77 vs 0.40, overlapping heavily
 # MAD of a lobby where many players have similar rates can be ~0: the spread is never taken as
 # smaller than this (kills/min), so a 1.2 against a lobby of 1.0s isn't an "outlier".
 KILL_RATE_MIN_SPREAD = 0.15
@@ -170,7 +170,7 @@ ACCUSE_RE = re.compile(
     r"hile\w*|"
     r"betr[üu]ger\w*|schummel\w*|"
     r"tramp\w*|chet[oa]\w*)(?!\w)", re.I)
-ACCUSE_LR = {2: 1.5, 3: 2.5}  # different accusers -> LR; 3 or more stay at 2.5
+ACCUSE_LR = {2: 1.5, 3: 2.5}  # LR_RESEARCH s8 (kept): different accusers -> LR, 3+ stay at 2.5; reports convict 15-30%
 ACCUSE_WHY = ("Weak on purpose: people accuse players who simply beat them, so even a few different "
               "players saying it only nudges the odds, and one angry player never counts.")
 
@@ -230,8 +230,8 @@ LR_NAME_CHANGE = 1.5  # one name change mid-match: humans do it now and then
 LR_NAME_CHANGES = 2.5  # 3+: bots cycle names to copy others or dodge kicks
 NAME_CHANGES_MANY = 3
 # A new account that joined with another new account (likely together): bot waves. Only what the
-# GROUP adds: the account's own young age is already cheat_score's "experience" clue (under 90 days
-# x3), so counting x2 for "new" again here would count the same fact twice. x1.5 is the extra for
+# GROUP adds: the account's own young age is already cheat_score's "account" clue (90 days: x5.3),
+# so counting x2 for "new" again here would count the same fact twice. x1.5 is the extra for
 # two fresh accounts arriving together, which honest friends on new accounts do less often than bots.
 LR_NEW_GROUP = 1.5
 BOT_MAX_LR = 4.0

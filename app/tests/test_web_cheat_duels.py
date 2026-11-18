@@ -31,11 +31,11 @@ class WebCheatDuelsTest(unittest.TestCase):
 
             # Nothing checked yet: every known check is explained.
             s = state()
-            self.assertEqual(s["summary"], "Nothing found yet.")
+            self.assertIsNone(s["table"])
             self.assertIsNone(s["found"])
             self.assertEqual(s["players"], [])
             self.assertEqual([m["check"] for m in s["meaning"]], list(demo_check.CHECK_MEANING))
-            self.assertTrue(s["state"].startswith("Cheat check: "))
+            self.assertIsInstance(s["state"], str)  # only what the switches don't say (test_cleanup_B)
             for key, setting in (("cheat_toggle_check", "demo_check"), ("cheat_toggle_keep", "demo_keep_only_cheaters")):
                 was = a.cfg[setting]
                 act(key)
@@ -50,12 +50,12 @@ class WebCheatDuelsTest(unittest.TestCase):
             g.on_screen_thread(lambda: a.show_demo_result("2026-11-17_20-14-03.dem", found, names, {}, "20:15:00",
                                                           "C:\\Somewhere\\demos\\2026-11-17_20-14-03_detections.json"))
             s = state()
-            self.assertIn("Saved: 2026-11-17_20-14-03_detections.json", s["summary"])
-            self.assertNotIn("Somewhere", s["summary"])  # no folders (user names) on the page
+            self.assertEqual(s["table"]["file"], "2026-11-17_20-14-03.dem")
+            self.assertNotIn("Somewhere", json.dumps(s))  # no folders (user names) on the page
             self.assertEqual([m["check"] for m in s["meaning"]], ["nocrex/oob_pitch", "angle_history"])
             self.assertEqual([m["strong"] for m in s["meaning"]], [True, False])
             self.assertEqual(s["found"]["who"], "Hank")
-            self.assertEqual(s["found"]["what"], "2 oob_pitch (strong) \u00b7 1 angle_history (weak) \u00b7 +1 more player")
+            self.assertEqual(s["found"]["what"], "3 detections (2 strong) \u00b7 +1 more player")
             self.assertEqual([(p["name"], p["count"], p["strong"]) for p in s["players"]],
                              [("Hank", 3, True), ("dan", 1, False)])
             self.assertEqual(s["picked"], str(HANK))
@@ -153,11 +153,6 @@ class WebCheatDuelsTest(unittest.TestCase):
             self.assertIsNone(a.cfg["ai_lock"])
             act("duels_lock", "bogus")
             self.assertIsNone(a.cfg["ai_lock"])
-
-            was = a.cfg["token_panel"]
-            act("duels_token_window")
-            self.assertEqual(state()["token_window"], not was)
-            act("duels_token_window")
 
             # heavy_talks off: only the duels, as on the Tk page.
             a.cfg["heavy_talks"] = False

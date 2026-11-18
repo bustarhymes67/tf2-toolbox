@@ -8,34 +8,44 @@ from collections import Counter
 
 import cheat_score
 from game_log import CLASS_MAX_HEALTH
-from player_flags import flag_why, profile_flags
 from screens import (BLANK_CELLS, COLUMN_NAMES, COLUMNS, FILTERS, HEADERS, HIDEABLE_COLUMNS, PICKABLE_COLUMNS,
-                     PLAYER_ACTIONS, flag_tag, short_cell)
-from settings import CLASS_ICONS_DIR, FLAGS_DIR, HP_FG, SEVERITY_FG
+                     PLAYER_ACTIONS, TAG_FG, flag_tag, short_cell)
+from settings import AVATARS_DIR, CLASS_ICONS_DIR, FLAGS_DIR, HP_FG, SEVERITY_FG
 from tf2_icons import ICON_SIZE
 from web_state import action, page
 
-# The worst flag's severity as the mark's colour, the verdict over the panel and its words.
+# The worst flag's severity as the mark's colour and its words (the Mark column's hover).
 MARKS = {3: "red", 2: "org", 1: "yel"}
 VERDICTS = {3: "CHEATER", 2: "SUSPICIOUS", 1: "WEAK FLAG"}
-# player_flags.flag_why's levels, as the panel's strength boxes (the words stay the app's own).
-STRENGTH_CLASS = {"weak": "weak", "medium": "medium", "strong": "strong", "proven": "strong",
-                  "yours": "strong", "info": "info"}
+# The stamp for a weak flag that has none of its own (flag_tag stamps only the stronger ones), so a
+# flagged row never looks empty now that the Flags column shows only the stamp and the score.
+WEAK_TAG = ("WEAK", TAG_FG["weak"])
 SIDE_WORDS = {"YOU": "You", "ALLY": "Team", "ENEMY": "Enemy", "?": "Team not known"}
 ACTION_METHODS = {key: method for _, entries in PLAYER_ACTIONS for key, _, method in entries}
 
-DEMO_PROOF_FLAG, DEMO_WEAK_FLAG = r"^demo check: (looked past|turned 180)", r"^demo check: \d"
-# The cheater score (cheat_score.py): which flags each clue key is about, so WHY FLAGGED can put the
-# clue's multiplier on its flag. A clue whose text is a flag's own text matches that flag first.
-CLUE_FLAGS = {
-    "lists": r"^on .* lists?\b", "marked": r"^marked by you", "bot_name": r"copied someone's name",
-    "bans": r"VAC ban|game ban", "community_ban": r"community banned", "server_bans": r"server bans?",
-    "experience": r"^new account|^only \d", "profile": r"private profile|never set up|level 0|limited account",
-    "profile_words": r"profile comment|^bio says", "friends": r"^secondhand cheater|^friends with (flagged|\d)",
-    "demo_weak": DEMO_WEAK_FLAG, "hs_record": r"headshots in one life", "hs_rate": r"% headshots", "crit_rate": r"crit kills",
-}
-# Short words for the band chip in the Flags column.
+# Short words for a band when a stamp has no word of its own (no flag, only the score).
 BAND_SHORT = {"Clean": "CLEAN", "Watch": "WATCH", "Suspicious": "SUSP", "Likely": "LIKELY", "Proven": "PROVEN"}
+# The stamp's word once the score says cheater, whatever the flag's own stamp said.
+BAND_STAMP = {"Likely": "CHEATER", "Proven": "PROVEN"}
+STRONG_STAMPS = ("CHEATER", "BANNED", "BOT")
+
+# The buttons' names (verb + what). The keys and methods stay screens.PLAYER_ACTIONS'.
+ACTION_LABELS = {"kick": "Votekick", "mark": "Mark as cheater", "history": "Open on SteamHistory \u2197",
+                 "mute": "Block their !speak", "say": "Post their summary", "stats": "Post their stats",
+                 "friends": "Post their friends here", "ip": "Send fake IP"}
+UNDO_LABELS = {"mark": "Unmark as cheater", "mute": "Allow their !speak"}
+ACTION_GROUPS = ("Act on them", "Post in chat")
+ACTION_HINTS = {"mark": "Only for you; remembered.",
+                "history": "Opens their SteamHistory page in your browser.",
+                "mute": "The toolbox ignores their !speak (it stops translating it into chat). Remembered."}
+KICK_ENEMY = "Votes only work on your own team"
+# The toolbar's Post in chat menu: (action key, name, the App method that posts it).
+# (key, name, the message or None, what it says instead when there is none yet)
+LOBBY_POSTS = (("summary", "Match highlights", lambda app: app.lobby_summary_text(),
+                "No scores yet (needs -g15 and some kills)"),
+               ("kill_race", "Top killers", lambda app: app.top_line(unknown=None), "No scores yet (needs -g15)"))
+SAYS_IN_CHAT = "Posts in chat:"
+COPIES = "TF2 is not connected: copies this for you to paste in chat:"
 
 # "Likely together": TF2 doesn't tell clients who is in a party with whom, so players on the same
 # team who joined the server within this many seconds of each other are shown as a guess.
@@ -45,6 +55,7 @@ TOGETHER_WHY = ("TF2 doesn't show other players' parties, so this is a guess: th
                 "and joined the server within 5 seconds of each other, which usually means they queued together "
                 "as a party. Bot groups often join together the same way. It can be wrong: players who happened "
                 "to join at the same moment look the same.")
+TOGETHER_SHORT = f"Likely together: joined within {TOGETHER_SECONDS} s of each other, same team."
 
 _pictures = {}  # path -> (modified time, data: URI)
 
@@ -78,7 +89,71 @@ def worst(app, p):
     return max((s for s, _ in app.flags.get(p.sid, [])), default=-1)
 
 
-def cell_json(app, p, column, cell):
+def avatar(p):
+    """Their Steam avatar (lookups.download_avatar saves it as avatars/<the picture's name>.png) as a
+    data: URI, or None while it isn't downloaded."""
+    url = p.summary.get("avatar") if isinstance(p.summary, dict) else None
+    name = re.sub(r"[^0-9a-f]", "", os.path.basename(url).split(".")[0].split("_")[0]) if url else ""
+    return picture(os.path.join(AVATARS_DIR, f"{name}.png")) if name else None
+
+
+def tone(app, p, sc):
+    """A player's colour: "bad" (red) only for a cheater, "warn" (orange) for suspicious, "weak"
+    (dim orange) for a weak flag or the Watch band, "" for nothing (and for you)."""
+    if p.sid == app.me:
+        return ""
+    if cheat_score.is_cheater(app, p, sc):
+        return "bad"
+    severity = worst(app, p)
+    if severity >= 2 or sc.at_least("Suspicious"):
+        return "warn"
+    return "weak" if severity >= 1 or sc.at_least("Watch") else ""
+
+
+def stamp(app, p, sc):
+    """The one stamp in the Flags column: [word, tone, score] such as ["CHEATER", "bad", "98%"], or
+    None. The word is the worst flag's own stamp (flag_tag), CHEATER/PROVEN once the score says so,
+    or the band's short word when only the score found something; the score's % is always inside."""
+    if p.sid == app.me:
+        return None
+    flags = app.flags.get(p.sid, [])
+    tag = flag_tag(flags[0][1], flags[0][0]) if flags else None
+    word = tag[0] if tag else WEAK_TAG[0] if worst(app, p) >= 1 else None
+    if sc.band in BAND_STAMP and word not in STRONG_STAMPS:
+        word = BAND_STAMP[sc.band]
+    if not word and sc.band != "Clean":
+        word = BAND_SHORT[sc.band]
+    if not word:
+        return None
+    return [word, tone(app, p, sc), cheat_score.pct_text(sc.prob)]
+
+
+def preview(app, text, note=None):
+    """A Post button's hover: the exact message it would post, and where it goes."""
+    if not text:
+        return {"head": "Nothing to post yet", "text": note or ""}
+    return {"head": SAYS_IN_CHAT if app.rcon_state == "connected" else COPIES, "text": text}
+
+
+def player_previews(app, p):
+    """The panel's Post buttons' messages for the selected player p, from the same App methods that
+    post them (chat.py: chat_text, stats_text, friends_text, ip_line)."""
+    return {"say": preview(app, app.chat_text(p)),
+            "stats": preview(app, app.stats_text(p), "No kills seen for them yet"),
+            "friends": preview(app, *app.friends_text(p)),
+            "ip": preview(app, app.ip_line(p))}
+
+
+def lobby_previews(app):
+    """The toolbar's Post in chat menu, each item with the exact message it would post."""
+    out = []
+    for key, name, text, empty in LOBBY_POSTS:
+        hover = preview(app, text(app), empty)
+        out.append({"key": key, "name": name, "head": hover["head"], "msg": hover["text"]})
+    return out
+
+
+def cell_json(app, p, column, cell, sc=None):
     """One cell of a row: its text and colour, plus what the page draws for that column."""
     text, fg = cell[:2]
     out = {"t": text, "c": fg}
@@ -101,9 +176,9 @@ def cell_json(app, p, column, cell):
         kills, deaths = app.board_text(p, "m_iScore"), app.board_text(p, "m_iDeaths")
         out = {"k": kills or "0", "d": deaths or "0"} if kills or deaths else {"t": ""}
     elif column == "Flags":
-        flags = app.flags.get(p.sid, [])
-        tag = flag_tag(flags[0][1], flags[0][0]) if flags else None
-        out["tag"] = list(tag) if tag else None
+        # Only the one stamp with the score inside ("CHEATER 98%"): the reasons are in the row's
+        # hover and the panel's clue list.
+        out = {"tag": stamp(app, p, sc or cheat_score.score(app, p)), "any": bool(app.flags.get(p.sid))}
     return out
 
 
@@ -138,13 +213,13 @@ def likely_groups(app):
 
 
 def lineup(app, group, strip):
-    """The pills on a team's title line: how many of each class, then the rest of App's
-    team_strip (average hours, new accounts)."""
+    """The pills on a team's title line (how many of each class), and the rest of App's team_strip
+    (average hours, new accounts) for the title line's hover."""
     classes = Counter(filter(None, map(app.player_class, group))).most_common()
     pills = [[str(n), cls] for cls, n in classes]
-    pills += [["", part] for part in strip.split(" · ")
-              if part and not any(part == f"{n} {cls}" for cls, n in classes) and not part.endswith(" more")]
-    return pills
+    info = [part for part in strip.split(" · ")
+            if part and not any(part == f"{n} {cls}" for cls, n in classes) and not part.endswith(" more")]
+    return pills, info
 
 
 def score_json(app, p, sc):
@@ -156,42 +231,27 @@ def score_json(app, p, sc):
     return b
 
 
-def flag_clue(text, clues):
-    """The clue a flag is about, or None."""
-    for c in clues:
-        if c.text == text:
-            return c
-    for c in clues:
-        pattern = CLUE_FLAGS.get(c.key)
-        if pattern is None and c.proof and c.key.startswith("demo"):
-            pattern = DEMO_PROOF_FLAG
-        if pattern and re.search(pattern, text, re.I):
-            return c
-    return None
+def clue_row(c):
+    """One WHY FLAGGED line. Your mark is labelled YOUR MARK on the page, so its text is just what
+    you marked them as."""
+    you = c.key == cheat_score.MARK_KEY
+    text = c.text.removeprefix("marked by you as ") if you else c.text
+    return {"key": c.key, "text": text, "why": c.why, "lr": cheat_score.lr_text(c.lr), "up": c.lr >= 1,
+            "proof": c.proof, "you": you}
 
 
 def reasons_json(app, p, sc):
-    """WHY FLAGGED: each flag with its strength and, when the score used it, the clue's multiplier
-    (once per clue); then the clues no flag shows (e.g. many hours lowering the odds)."""
-    reasons, used = [], set()
-    for sev, text in app.flags.get(p.sid, []) + profile_flags(p.profile):
-        level, why = flag_why(sev, text)
-        c = flag_clue(text, sc.clues)
-        lr = None
-        if c and c.key not in used:
-            used.add(c.key)
-            lr = cheat_score.lr_text(c.lr)
-        reasons.append({"level": level.upper(), "cls": STRENGTH_CLASS.get(level, "weak"), "text": text, "why": why,
-                        "lr": lr, "up": bool(c and c.lr >= 1)})
-    rest = [c for c in sc.clues if c.key not in used]
-    for c in rest:
-        if not cheat_score.is_small(c):
-            reasons.append({"level": "SCORE", "cls": "info", "text": c.text, "why": c.why,
-                            "lr": cheat_score.lr_text(c.lr), "up": c.lr >= 1})
-    small = cheat_score.small_row(rest)  # the tiny ones (x0.9-x1.1) as one line, like the tooltip
+    """WHY FLAGGED: the score's clues, one line each with its multiplier and why (your own mark
+    first, then the biggest). Every flag's clue has its own line, even a tiny one; the tiny clues no
+    flag shows (x0.9-x1.1) are one line together, as in the row's hover."""
+    flagged = {c.key for c in (cheat_score.flag_clue(text, sc.clues) for _, text in cheat_score.all_flags(app, p)) if c}
+    shown = [c for c in sc.clues if c.key in flagged or not cheat_score.is_small(c)]
+    shown.sort(key=lambda c: c.key != cheat_score.MARK_KEY)  # stable: otherwise still biggest first
+    reasons = [clue_row(c) for c in shown]
+    small = cheat_score.small_row([c for c in sc.clues if c not in shown])
     if small:
-        reasons.append({"level": "SCORE", "cls": "info", "text": small["text"], "why": small["why"],
-                        "lr": small["lr"], "up": small["up"]})
+        reasons.append({"key": "small", "text": small["text"], "why": small["why"], "lr": small["lr"],
+                        "up": small["up"], "proof": False, "you": False})
     return reasons
 
 
@@ -215,9 +275,13 @@ def team_block(app, key, side, cells, groups, scores):
         p = e[1]
         rows.append({"sid": str(p.sid), "sel": p.sid == app.selected, "grp": group_of.get(str(p.sid)),
                      "score": score_json(app, p, scores[p.sid]),
-                     "cells": [cell_json(app, p, c, cell) for c, cell in zip(COLUMNS, cells[p.sid])]})
+                     "tone": tone(app, p, scores[p.sid]),
+                     "cells": [cell_json(app, p, c, cell, scores[p.sid]) for c, cell in zip(COLUMNS, cells[p.sid])]})
+    pills, info = lineup(app, players, strip)
     return {"key": key, "name": name, "colour": colour, "count": len(own),
-            "flagged": sum(1 for p in own if worst(app, p) >= 1), "lineup": lineup(app, players, strip), "rows": rows,
+            "flagged": sum(1 for p in own if worst(app, p) >= 1),
+            "cheaters": sum(1 for p in own if p.sid != app.me and cheat_score.is_cheater(app, p, scores[p.sid])),
+            "lineup": pills, "info": info, "rows": rows,
             "groups": sum(1 for g in groups if colour and g["colour"] == colour)}
 
 
@@ -232,29 +296,32 @@ def panel(app, groups, scores):
     p = app.players.get(app.selected)
     if not p:
         return None
-    severity = worst(app, p)
     team = app.team_of(p)
-    hp, hp_fg = app.health_cell(p)
-    kills, deaths = app.board_int(p.sid, "m_iScore"), app.board_int(p.sid, "m_iDeaths")
     sc = scores.get(p.sid) or cheat_score.score(app, p)
     reasons = reasons_json(app, p, sc)
     # player_details without the team and class the line above already shows.
     about = app.player_details(p).split(" · ")
     about = [part for part in about if part not in (team, app.player_class(p))]
+    kills, deaths = app.board_int(p.sid, "m_iScore"), app.board_int(p.sid, "m_iDeaths")
+    if kills is not None or deaths is not None:  # K/D and HP are in the row; the ratio only here
+        about.append(f"K/D ratio {(kills or 0) / max(1, deaths or 0):.2f}")
     enabled = app.applicable(p)
-    marked = str(p.sid) in app.marks
-    muted = p.sid in app.cfg["speak_muted"]
-    labels = {"mark": "Unmark" if marked else "Mark cheater", "mute": "Unmute !speak" if muted else "Mute !speak"}
+    undo = {"mark": str(p.sid) in app.marks, "mute": p.sid in app.cfg["speak_muted"]}
+    says = player_previews(app, p)
+
+    def button(key, text):
+        """[key, name, on, hover]: a Post button's hover is its exact message."""
+        hint = says.get(key) or ({"text": KICK_ENEMY} if key == "kick" and team == "ENEMY"
+                                 else {"text": ACTION_HINTS[key]} if key in ACTION_HINTS else None)
+        return [key, UNDO_LABELS[key] if undo.get(key) else ACTION_LABELS.get(key, text), key in enabled, hint]
     return {
         "sid": str(p.sid), "name": p.name, "you": p.sid == app.me, "enemy": team == "ENEMY",
-        "verdict": VERDICTS.get(severity), "mark": MARKS.get(severity),
         "side": SIDE_WORDS[team], "cls": app.player_class(p), "about": " · ".join(about),
-        "kd": f"{kills}/{deaths}" if kills is not None or deaths is not None else "",
-        "ratio": f"{(kills or 0) / max(1, deaths or 0):.2f}" if kills is not None or deaths is not None else "",
-        "hp": hp, "hp_c": hp_fg, "reasons": reasons, "score": score_json(app, p, sc),
+        "avatar": avatar(p), "tone": tone(app, p, sc), "prior": cheat_score.pct_text(sc.prior),
+        "reasons": reasons, "score": score_json(app, p, sc),
         "together": together(p, groups),
-        "actions": [[[key, labels.get(key, text), key in enabled] for key, text, _ in entries]
-                    for _, entries in PLAYER_ACTIONS],
+        "groups": list(ACTION_GROUPS),
+        "actions": [[button(key, text) for key, text, _ in entries] for _, entries in PLAYER_ACTIONS],
     }
 
 
@@ -301,7 +368,12 @@ def players_state(app):
         "severity_colours": {str(k): v for k, v in SEVERITY_FG.items()},
         "groups": groups,
         "together_why": TOGETHER_WHY,
+        "together_short": TOGETHER_SHORT,
+        # The Mini HUD's switch and Move (actions hud_toggle / hud_move, from web_chat_status_help.py).
+        "hud": bool(app.cfg.get("hud")),
+        "hud_moving": bool(getattr(getattr(app, "hud", None), "moving", False)),
         "panel": panel(app, groups, scores),
+        "posts": lobby_previews(app),
     }
 
 
@@ -346,8 +418,10 @@ def _deselect(app):
 
 @action("players_lobby")
 def _lobby(app, which):
-    """The toolbar's Say in chat buttons."""
-    {"summary": app.say_lobby_summary, "kill_race": app.say_kill_race}[which]()
+    """The toolbar's Post in chat menu (Match highlights, Top killers)."""
+    methods = {"summary": app.say_lobby_summary, "kill_race": app.say_kill_race}
+    if which in methods:
+        methods[which]()
 
 
 @action("players_act")

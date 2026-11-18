@@ -227,10 +227,10 @@ All the code is in `app/`.
 | `demo_check.py` | The live cheat check: runs `tools/demo-analysis.exe` on the demo TF2 records, and keeps only demos where it found something |
 | `ai.py` | HoovyGPT: asking the models and counting free answers and tokens |
 | `hoovygpt_prompt.txt` | HoovyGPT's personality, in plain text |
-| `screens.py` | The window: header, tabs (Players, Cheat check, Duels, Chat, Status, Help), the player table, alerts and tokens window |
+| `screens.py` | What the window's pages share: the player list's order and filters, the page texts, and the alerts over the game |
 | `settings.py` | File locations, every setting with its default, and colours |
-| `tf2_translator.py` | The chat translator, which also runs on its own |
-| `tf2_setup.py`, `tf2_icons.py` | First-time setup and the class icons |
+| `tf2_translator.py` | The chat translator and its overlay (its settings are the `translator_...` ones in `scanner_config.json`) |
+| `tf2_setup.py`, `tf2_icons.py` | First-time setup, and TF2's class icons copied from your TF2 install |
 
 ## How it fits together
 

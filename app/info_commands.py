@@ -1,4 +1,4 @@
-"""Chat commands anyone can type for information about the lobby, answered by the scanner:
+"""Chat commands anyone can type for information about the lobby, answered by the toolbox:
 !check <name> (class and health), !check all (the other team's classes), !medic, !top,
 !kd <name>, !hours <name>, !cheaters and !help. Each can be switched off on the Chat page."""
 
@@ -144,15 +144,26 @@ class InfoCommandsMixin:
         items = [f"{short(p.name, 16)} {self.health_words(p)}" for p in medics]
         return fit_list(f"[MEDIC] {color}: ", items, empty="no Medic")
 
-    def top_line(self):
-        parts = []
+    def top_line(self, unknown="[TOP] Scores not known yet (needs -g15)"):
+        """Each team's total kills and its top fragger, from TF2's scoreboard: what !top answers
+        and what the Players page's Kill race button posts (the same line). `unknown` when no
+        score is known (the button passes None and says why in the toolbox instead)."""
+        teams = {}  # RED/BLU -> (total kills, top player, their kills)
         for color in ("RED", "BLU"):
             scored = [(self.board_int(p.sid, "m_iScore"), p) for p in self.team_players(color)]
             scored = [(kills, p) for kills, p in scored if kills is not None]
             if scored:
                 kills, p = max(scored, key=lambda item: item[0])
-                parts.append(f"{color}: {short(p.name, 18)} {kills}/{self.board_int(p.sid, 'm_iDeaths') or 0}")
-        return "[TOP] " + " | ".join(parts) if parts else "[TOP] Scores not known yet (needs -g15)"
+                teams[color] = (sum(k for k, _ in scored), p, kills)
+        if not teams:
+            return unknown
+        red, blu = (teams.get(color, (0, None, 0))[0] for color in ("RED", "BLU"))
+        parts = [f"[TOP] Kills: RED {red} - {blu} BLU"]
+        parts += [f"{color}: {short(p.name, 18)} {kills}/{self.board_int(p.sid, 'm_iDeaths') or 0}"
+                  for color, (_, p, kills) in teams.items()]
+        while not fits(" | ".join(parts), CHAT_LIMIT) and len(parts) > 1:
+            parts.pop()
+        return " | ".join(parts)
 
     def kd_line(self, p):
         kills, deaths = self.board_int(p.sid, "m_iScore"), self.board_int(p.sid, "m_iDeaths")
@@ -191,4 +202,3 @@ class InfoCommandsMixin:
         on[command] = not on.get(command, True)
         self.cfg["info_commands"] = on
         save_config(self.cfg)
-        self.update_info_buttons()

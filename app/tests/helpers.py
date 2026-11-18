@@ -30,7 +30,7 @@ MODULES = (settings, game_log, player_flags, lookups, chat, duels, info_commands
 _TEST_FILES = tempfile.mkdtemp(prefix="tf2scanner-tests-")
 settings.CONFIG_PATH = os.path.join(_TEST_FILES, "scanner_config.json")
 settings.SECRETS_PATH = os.path.join(_TEST_FILES, "secrets.env")
-tf2_translator.CONFIG_PATH = os.path.join(_TEST_FILES, "translator_config.json")  # the overlay's settings too
+settings.OLD_TRANSLATOR_CONFIG_PATH = os.path.join(_TEST_FILES, "config.json")  # the translator's old settings too
 ME = game_log.STEAM64_BASE + 1  # tomato, userid 1 in STATUS
 
 
@@ -80,7 +80,7 @@ class Game:
         self.undo.append(patch_everywhere("ai_answer", self.model))
         self.echo, self.sent = echo, []
         self.lines, self.events, self.toggles, self.commands, self.lookups = (queue.Queue() for _ in range(5))
-        cfg = dict(settings.DEFAULTS, rcon_password="x", x=-5000, y=-5000, hud_x=-5000, hud_y=-3800, token_panel=False, ez_mode=False,
+        cfg = dict(settings.DEFAULTS, rcon_password="x", x=-5000, y=-5000, hud_x=-5000, hud_y=-3800, ez_mode=False,
                    announcer=False, country_beef_auto=False, gemini_api_key="k", groq_api_key="k", ai_model="auto",
                    heavy_talks=True)
         cfg.update(settings_changes)

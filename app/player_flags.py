@@ -25,7 +25,6 @@ class Player:
     hours: object = PENDING
     friends: object = PENDING       # set of SteamID64s, or None when the list is private
     level: object = PENDING         # Steam level, or None when hidden
-    hs_record: object = PENDING     # most Sniper headshots in one life ever, or None when private
     ping: int = 0                   # from status, in ms
 
 
@@ -106,8 +105,6 @@ def evaluate(p, cfg, lists, marks, thieves, now=None):
         flags.append((1, "likely limited account (level 0, no friends)"))
     elif p.level == 0:
         flags.append((1, "Steam level 0"))
-    if isinstance(p.hs_record, int) and p.hs_record >= cfg["headshot_record_flag"]:
-        flags.append((2, f"{p.hs_record} headshots in one life (Sniper record)"))
     if isinstance(p.hours, (int, float)) and p.hours < cfg["low_hours"]:
         flags.append((1, f"only {p.hours}h in TF2"))
     return sorted(flags, reverse=True)
@@ -138,7 +135,6 @@ FLAG_WHY = (
     (r"server bans?:.*(" + CHEAT_BAN_RE.pattern + r")", "medium", "A community server's admin banned them for cheating. That's one admin's judgement, not Valve's."),
     (r"server bans?", "weak", "Banned on a community server, with no sign that it was for cheating."),
     (r"crit kills", "strong", "Luck gets this many random crits less than 1 time in 1000, even with a Kritz medic."),
-    (r"headshots in one life", "medium", "In a sample, 23% of listed cheaters reached 30 or more, against 3% of other players."),
     (r"% headshots", "medium", "A very high headshot rate this match. Very good snipers can get close to this too."),
     (r"^secondhand cheater|^friends with", "weak", "Being friends with a cheater isn't cheating."),
     (r"new account|never set up|Steam level 0|limited account|^only ", "weak",
@@ -224,18 +220,17 @@ def friend_flags(p, players, known_cheaters, worst, mark_friends, name_of):
     return flags
 
 
-# Weapons that only crit at random (no headshots, backstabs, revenge crits, mini-crit
-# tricks or melee, whose random crit chance is much higher). Crit hacks force crits
-# on exactly these.
+# Single-shot ranged weapons that only crit at random (no headshots, backstabs, revenge crits,
+# mini-crit tricks). Crit hacks force crits on exactly these. Left out (LR_RESEARCH s11, TF2 wiki
+# "Critical hits"): melee (random crits up to 60%, so the test means nothing) and rapid-fire weapons
+# (minigun, flamethrower, SMG, pistol, syringe gun: they crit in 2-second bursts, not shot by shot).
 RANDOM_CRIT_WEAPONS = {
     "tf_projectile_rocket", "quake_rl", "blackbox", "liberty_launcher", "rocketlauncher_directhit",
     "scattergun", "force_a_nature", "shortstop", "pep_brawlerblaster",
-    "minigun", "tomislav", "brass_beast", "natascha", "long_heatmaker", "iron_curtain",
-    "flamethrower", "degreaser", "rainblower",
     "shotgun_primary", "shotgun_soldier", "shotgun_pyro", "shotgun_hwg", "panic_attack", "family_business",
     "tf_projectile_pipe", "tf_projectile_pipe_remote", "iron_bomber", "quickiebomb_launcher", "loch_n_load",
-    "pistol", "pistol_scout", "smg", "revolver", "letranger", "enforcer",
-    "syringegun_medic", "blutsauger", "crusaders_crossbow", "widowmaker",
+    "revolver", "letranger", "enforcer",
+    "crusaders_crossbow", "widowmaker",
 }
 NORMAL_CRIT_RATE = 0.25  # generous: ~15% of kills with these weapons are crits in real matches
 

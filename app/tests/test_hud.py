@@ -32,7 +32,6 @@ class HudTest(unittest.TestCase):
             g.on_screen_thread(a.toggle_hud)
             self.assertFalse(a.cfg["hud"])
             self.assertEqual(a.hud.shown, ())  # switched off: nothing drawn
-            self.assertEqual(a.hud_button.value.cget("text"), "OFF")
         Game().play(script)
 
     def test_it_can_be_moved_and_keeps_its_place(self):
@@ -41,7 +40,6 @@ class HudTest(unittest.TestCase):
             self.assertEqual(g.on_screen_thread(a.hud.where), (-5000, -3800))  # the tests keep it off-screen
             g.on_screen_thread(a.toggle_hud_move)
             self.assertTrue(a.hud.moving)
-            self.assertEqual(a.hud_move_button.value.cget("text"), "Done")
             self.assertTrue(a.hud.shown)  # something to grab while moving, even with no match
             press = type("E", (), {"x_root": 0, "y_root": 0})
             drag = type("E", (), {"x_root": 40, "y_root": 25})

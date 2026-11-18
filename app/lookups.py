@@ -188,19 +188,6 @@ def friend_ids(key, sid):
     return {int(f["steamid"]) for f in resp.get("friendslist", {}).get("friends", [])}
 
 
-def headshot_record(key, sid):
-    """Most headshots they ever got in one life as Sniper (TF2's own lifetime stats),
-    or None when their game details are private."""
-    try:
-        resp = steam_get("ISteamUserStats/GetUserStatsForGame/v2", key=key, steamid=sid, appid=440)
-    except urllib.error.HTTPError as e:
-        if e.code == 400:  # private game details
-            return None
-        raise
-    stats = resp.get("playerstats", {}).get("stats", [])
-    return next((s["value"] for s in stats if s["name"] == "Sniper.max.iHeadshots"), 0)
-
-
 def steam_level(key, sid):
     return steam_get("IPlayerService/GetSteamLevel/v1", key=key, steamid=sid)["response"].get("player_level")
 
@@ -223,8 +210,7 @@ def steam_lookup(key, batch, events):
     for b in bans["players"]:
         events.put(("bans", int(b["SteamId"]), b))
     for sid in batch:
-        for kind, lookup in (("hours", tf2_hours), ("friends", friend_ids), ("level", steam_level),
-                             ("hs_record", headshot_record)):
+        for kind, lookup in (("hours", tf2_hours), ("friends", friend_ids), ("level", steam_level)):
             try:
                 value = lookup(key, sid)
             except (OSError, ValueError, KeyError):
@@ -281,7 +267,7 @@ def lists_worker(urls, events):
             json.dump(cache, f)  # compact: the SteamRep archive alone is 52k entries
 
     index = {}
-    for data in cache["lists"].values():
+    for url, data in cache["lists"].items():
         title = data.get("file_info", {}).get("title", "community")
         source = LIST_NAMES.get(title, title)
         for entry in data.get("players", []):
@@ -296,6 +282,15 @@ def lists_worker(urls, events):
                 item["name"] = name  # as the list last saw them, for naming a cheater's friends
             if source not in item["sources"]:
                 item["sources"].append(source)
+            # Per list: its address (which lists copy each other), what it says and when it last saw
+            # them, for the cheater score (cheat_score.list_clues).
+            per = item.setdefault("by_source", {}).setdefault(source, {"urls": [], "attributes": set(), "time": 0})
+            if url not in per["urls"]:
+                per["urls"].append(url)
+            per["attributes"].update(entry.get("attributes", []))
+            seen = (entry.get("last_seen") or {}).get("time")
+            if isinstance(seen, (int, float)) and seen > per["time"]:
+                per["time"] = seen
     events.put(("lists", index))
 
 
@@ -324,19 +319,29 @@ def download_flag(code, events):
     events.put(("flag", code, path))
 
 
-AVATAR_SIZE = 18  # pixels: fits in a row of the player list
+AVATAR_SIZE = 64  # pixels: sharp on the 48 px player card; smaller places scale it down
+
+
+def avatar_ok(path):
+    """True when path is an avatar already saved at AVATAR_SIZE."""
+    try:
+        from PIL import Image
+        with Image.open(path) as image:
+            return image.size == (AVATAR_SIZE, AVATAR_SIZE)
+    except (ImportError, OSError, ValueError):
+        return False
 
 
 def download_avatar(sid, url, events):
-    """Saves a player's Steam avatar as a small PNG once, then tells the UI it's ready. Steam
-    sends JPGs, which Tk can't read, so Pillow converts it; without Pillow, or for an address
-    that isn't Steam's picture server, the row just keeps showing the name."""
+    """Saves a player's Steam avatar as a small PNG once (again when an older one has another
+    size), then tells the App it's ready. Steam sends JPGs; Pillow converts it. Without Pillow, or
+    for an address that isn't Steam's picture server, the pages keep showing the name."""
     name = re.sub(r"[^0-9a-f]", "", os.path.basename(url).split(".")[0].split("_")[0])
     host = urllib.parse.urlsplit(url).hostname or ""
     if not (url.startswith("https://") and host.endswith(".steamstatic.com") and name):
         return
     path = os.path.join(AVATARS_DIR, f"{name}.png")
-    if not os.path.exists(path):
+    if not avatar_ok(path):
         try:
             from PIL import Image
             req = urllib.request.Request(url, headers=USER_AGENT)

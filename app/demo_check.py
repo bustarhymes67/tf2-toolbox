@@ -160,13 +160,35 @@ def clean_data(data):
     return {key.replace("\u200b", ""): value for key, value in data.items()}
 
 
+def duration_text(ticks):
+    """A demo's length as hh:mm:ss, from its ticks."""
+    seconds = round(ticks * DEMO_TICK)
+    return f"{seconds // 3600:02}:{seconds // 60 % 60:02}:{seconds % 60:02}"
+
+
+def check_name(check):
+    """A check in plain words ("aim flicks"), or its own name when there are none."""
+    return STRONG_CHECKS.get(check) or WEAK_CHECKS.get(check) or check.removeprefix("nocrex/")
+
+
+def found_rows(result, names):
+    """The table of what was found in one demo: one row per player and check, the players with the
+    most detections first, strong checks first: {"sid", "name", "check", "about", "count", "strong"}."""
+    counts = count_checks(result.get("detections", []))
+    rows = []
+    for sid, checks in sorted(counts.items(), key=lambda kv: -sum(kv[1].values())):
+        rows += [{"sid": sid, "name": names.get(sid, "?"), "check": check, "about": check_name(check),
+                  "count": n, "strong": check in STRONG_CHECKS}
+                 for check, n in sorted(checks.items(), key=lambda kv: check_order(*kv))]
+    return rows
+
+
 def summary_text(demo_name, result, names, checked_at, saved_to=None):
     """Like demo-analysis's command-line summary, with each player's name next to their ID."""
     ticks = result.get("duration", 0)
-    seconds = round(ticks * DEMO_TICK)
     detections = result.get("detections", [])
     lines = [f"Map: {result.get('map', '?')}",
-             f"Duration: {seconds // 3600:02}:{seconds // 60 % 60:02}:{seconds % 60:02} ({ticks} ticks), checked {checked_at}",
+             f"Duration: {duration_text(ticks)} ({ticks} ticks), checked {checked_at}",
              f"Demo: {demo_name}"]
     if saved_to:
         lines.append(f"Saved: {saved_to}")

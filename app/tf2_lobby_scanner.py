@@ -6,18 +6,15 @@ VAC/game bans), steamhistory.net (community server bans), community cheater
 lists and your own marks. Flagged players pop up as an alert at the top of the
 screen. Profile comments and bios are searched for words like "cheater".
 
-It also starts the chat translator overlay (tf2_translator.py), so one window
-runs both.
-
-Press F9 (anywhere, even in game) to show/hide the player list:
-  drag the header   move it (position is saved when you hide it)
-  click a player    votekick, copy/say their scan results in chat, mark as
-                    cheater, copy SteamID, open profile
+It also runs the chat translator overlay (tf2_translator.py), the mini HUD (hud.py) and the
+alerts over the game (screens.Toast). Its window is a web page (web_ui.py, web/): F9 (anywhere,
+even in game) shows or hides it.
 
 Needs these TF2 launch options (the script prints them with your password):
   -condebug -conclearlog -g15 -usercon +ip 0.0.0.0 +rcon_password <pw> +hostport 27069 +net_start
 """
 
+import ctypes
 import json
 import os
 import queue
@@ -29,11 +26,11 @@ import tkinter as tk
 import webbrowser
 from collections import Counter, deque
 import tf2_translator
-from tf2_translator import claim_instance, hotkey_listener, key_to_vk, parse_chat, single_instance, start_translator, tail
+from tf2_translator import hotkey_listener, key_to_vk, parse_chat, single_instance, start_translator, tail
 
 import settings
-from settings import (BG, BORDER, HERE, FAKE_IPS_PATH, MARKS_PATH, SECRETS_PATH, SEEN_PATH, launch_options, load_config, load_secrets,
-    load_json, save_config, save_json, FONT_LABEL, FONT_UI, FONT_UI_BOLD, HP_FG, MUTED, TEXT2, mono_family)
+from settings import (HERE, FAKE_IPS_PATH, MARKS_PATH, SECRETS_PATH, SEEN_PATH, launch_options, load_config, load_secrets,
+    load_json, save_config, save_json, FONT_LABEL, FONT_UI_BOLD, HP_FG, MUTED, TEXT2)
 from game_log import (G15_DONE, G15_RE, G15_TEAMS, GC_TEAM_COLOR, HOSTNAME_RE, IDLE_KICK, KILL_RE, LOBBY_HEADER_RE,
     PLAYERS_RE,
     LOBBY_MEMBER_RE, MAP_RE, NOT_A_WEAPON, NO_LOBBY_RE, PENDING, STATUS_HEADER_RE, STATUS_RE,
@@ -43,14 +40,13 @@ from player_flags import (Player, RANDOM_CRIT_WEAPONS, crit_flag, evaluate, frie
     name_thieves)
 from lookups import (class_icons_worker, download_avatar, download_flag, lists_worker, lookup_worker, profile_worker,
     rcon_worker)
-from chat import CHAT_LIMIT, ChatLimit, ChatMixin, console_safe, split_chat
+from chat import ChatLimit, ChatMixin, console_safe
 from duels import DuelsMixin
 from info_commands import InfoCommandsMixin
 from hud import HudMixin
 from ai import AIMixin, AI_CHAT_LOG
-from screens import ScreensMixin, Toast, TokenPanel, on_a_screen
-from ui_shapes import round_window_corners
-from demo_check import (CHECK_NOW, DEMO_TOOL, STRONG_CHECKS, copy_lines, export_evidence, meaning_text, save_cheater_ticks, count_checks, demo_flags, demo_worker, demos_dir,
+from screens import FILTERS, ScreensMixin, Toast, on_a_screen
+from demo_check import (CHECK_NOW, DEMO_TOOL, STRONG_CHECKS, copy_lines, export_evidence, save_cheater_ticks, count_checks, demo_flags, demo_worker, demos_dir,
                         detections_path, save_detections, summary_text)
 
 # One match's chat lines and kill times kept for the live cheater clues: plenty for a match, and a
@@ -59,13 +55,13 @@ MATCH_CHAT_MAX = 3000
 MATCH_KILLS_MAX = 5000
 
 class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMixin):
-    """The scanner itself: it reads TF2's output in handle_line, takes results from the background
-    threads in handle_event, and keeps the list of players. Chat, duels, the AI and the screen
-    are in the other files, as mixins: parts of this class that live elsewhere."""
+    """The toolbox itself: it reads TF2's output in handle_line, takes results from the background
+    threads in handle_event, and keeps the list of players. Chat, duels, the AI and what the web
+    window's pages need are in the other files, as mixins: parts of this class that live elsewhere."""
 
     def __init__(self, cfg, lines, events, toggles, commands, lookups, profile_lookups=None,
                  history=None):
-        """Sets up all state and builds the window. The queues connect it to the background threads:
+        """Sets up all state and the windows over the game. The queues connect it to the background threads:
         lines = TF2's output, events = lookup results, toggles = F9 presses, commands = console
         commands for TF2, lookups and profile_lookups = players still to look up."""
         self.profile_lookups = profile_lookups or queue.Queue()
@@ -121,12 +117,9 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
         self.ai_reply_at = 0.0         # when its question was typed
         self.lists = {}
         self.cheater_ids = set()  # list entries marked cheater/exploiter (not just "suspicious")
-        self.flag_images = {}     # country code -> tk.PhotoImage
-        self.class_images = {}    # class -> tk.PhotoImage of TF2's scoreboard icon
         self.flags_requested = set()
         self.fake_ips = {}  # Steam ID -> fake IPv4, this match only (chat.fake_ip_of); never saved
         self.forget_live_clues()  # this match's chat, name changes, spawns and kill times (live_clues.py)
-        self.avatar_images = {}   # sid -> tk.PhotoImage of their Steam avatar, next to their name
         self.avatars_requested = set()  # (sid, picture address) already asked for
         self.marks = load_json(MARKS_PATH, {})
         self.me = my_steamid()
@@ -144,6 +137,7 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
         self.demo_summary = ""    # its summary, like demo-analysis's command line
         self.demo_user_names = {}  # user id -> name, for checks that name their victim by user id
         self.demo_pings = {}      # sid -> last ping seen, kept for players who have left since
+        self.demo_picked_sid = None  # the player picked in the Cheat check's list
         self.idle_rejoined_at = 0.0  # when "retry" was last typed after an idle kick
         self.translator_lines = None  # the translator's chat queue, when it runs inside the scanner
         self.demo_alerted = {}    # (demo, sid) -> detections already alerted about
@@ -153,68 +147,40 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
         self.match_joined_at = 0.0   # when the map last loaded: ds_record waits RECORD_AFTER_JOIN after it
         self.left_server = False     # "Disconnect" seen, and no server joined since
         self.selected = None
-        self.feedback = ""
-        self.visible = True
+        self.feedback = ""        # a short confirmation in the title bar (notify)
+        self.visible = False      # the window, shown and hidden with F9
         self.dirty = True
-        self.drag = None
-
-        self.started_at = time.time()
-        self.web = None           # the web window (web_ui.WebWindow) when the window is a web page
-        self.web_actions = None   # clicks from the web page, run here on App's thread
-        self.web_pushed_at = 0.0
-        self.root = root = tk.Tk()
-        root.overrideredirect(True)
-        root.attributes("-topmost", True)
-        root.configure(bg=BG, highlightthickness=1, highlightbackground=BORDER, highlightcolor=BORDER)
-        if not on_a_screen(cfg["x"] + 40, cfg["y"] + 10):
-            cfg["x"], cfg["y"] = 20, 20  # its monitor isn't connected now: back to the main screen
-        root.geometry(f"+{cfg['x']}+{cfg['y']}")
-        self.font = (FONT_UI, 10)
-        self.bold = (FONT_UI_BOLD, 10)
-        self.small = (FONT_UI, 9)
-        self.mono = (mono_family(root), 9)        # numbers, commands, ticks
-        self.label_font = (FONT_LABEL, 10)        # uppercase labels and buttons
-
-        self._build_shell()
-        self.table.bind("<MouseWheel>", self._scroll)
-        # Row widgets are created once and then only updated (screens.Side): rebuilding ~150
-        # labels on every click made selecting a player lag.
-        self.actions_state = None
         self.sort_column = None   # None = the default order (flagged players first)
         self.sort_descending = False
         self.search = ""          # what's typed in the search box, lowercase: only names with it show
-        self._build_table()
-        self._build_players_page()
-        self._build_cheat_page()
-        self._build_ai_page()
-        self._build_chat_page()
-        self._build_status_page()
-        self._build_help_page()
-        self.show_page(self.cfg["page"])
-        self.width_spacer.config(width=self.window_width())
-        # The table grows with long names and flags, or the window was resized: lay it out again.
-        self.table.bind("<Configure>", self._table_resized)
-        self._build_resize_handles()
-        self.show_body()
+        if cfg["player_filter"] not in dict(FILTERS):
+            cfg["player_filter"] = "all"
 
-        root.update_idletasks()
-        round_window_corners(root)
+        self.started_at = time.time()
+        self.web = None           # the web window (web_ui.WebWindow); None in the tests
+        self.web_actions = None   # clicks from the web page, run here on App's thread
+        self.web_pushed_at = 0.0
+        # Tk only draws what's over the game: the alerts, the mini HUD and the translation overlay.
+        # Its own root window never shows; it also runs the timers (after) and holds the clipboard.
+        self.root = root = tk.Tk()
+        root.withdraw()
+        self.show_page(cfg["page"])  # a page saved under an old name opens under its new one
         self.toast = Toast(root, (FONT_UI_BOLD, 12), (FONT_LABEL, 9))
         self.hud_init()
-        self.token_panel = TokenPanel(root, cfg, self.toggle_token_panel)
-        self.set_visible(False)
+        # Duels come back on after a restart if they were on, as Heavy can't talk; with heavy_talks
+        # on it all starts off, so Heavy never starts talking by surprise.
+        if cfg["duels_on"] and not cfg["heavy_talks"]:
+            self.toggle_ai()
         for line in history or []:
             self.handle_line(line, live=False)
 
     # --- window -----------------------------------------------------------------
 
     def quit(self):
-        """Stops the scanner and the translator inside it."""
+        """Stops the toolbox and the translator inside it, keeping where the window was."""
         if self.web:
             x, y, w, h = self.web.where()
             self.cfg.update(x=x, y=y, web_width=w, web_height=h)
-        else:
-            self.cfg["x"], self.cfg["y"] = self.root.winfo_x(), self.root.winfo_y()
         save_config(self.cfg)
         self.root.destroy()
 
@@ -409,7 +375,6 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
         self.connected_before = set()  # a map change isn't everyone leaving
         self.last_death = {}
         self.first_blood_open = True   # a fresh map: its first kill is first blood
-        self.table_widest = 0          # new players, new names: the table may get narrower
         self.dirty = True
 
     def forget_live_clues(self):
@@ -501,7 +466,7 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
         """Takes one result from a background thread; event[0] says what kind it is."""
         kind = event[0]
         if kind == "summary" and (url := event[2].get("avatar")) and (event[1], url) not in self.avatars_requested:
-            self.avatars_requested.add((event[1], url))
+            self.avatars_requested.add((event[1], url))  # saved in avatars/; no page shows them yet
             threading.Thread(target=download_avatar, args=(event[1], url, self.events), daemon=True).start()
         if kind == "rcon":
             if event[1] != "connected" and self.rcon_state == "connected":
@@ -515,27 +480,8 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
             self.api_state = event[1]
         elif kind == "sh":
             self.sh_state = event[1]
-        elif kind == "class_icons":
-            for cls, path in event[1].items():
-                try:
-                    self.class_images[cls] = tk.PhotoImage(file=path)
-                except tk.TclError:
-                    pass  # that class keeps showing its name
-            self.redraw_rows()
-        elif kind == "flag":
-            _, code, path = event
-            try:
-                self.flag_images[code] = tk.PhotoImage(file=path)
-            except tk.TclError:
-                return  # not a usable picture: the code stays as text
-            # Rows that show this country must redraw to swap the code for the flag.
-            self.redraw_rows()
-        elif kind == "avatar":
-            _, sid, path = event
-            try:
-                self.avatar_images[sid] = tk.PhotoImage(file=path)
-            except tk.TclError:
-                return  # not a usable picture: the row keeps just the name
+        elif kind in ("class_icons", "flag", "avatar"):
+            pass  # saved as files (class_icons/, flags/, avatars/): the pages read those themselves
         elif kind == "summary" and (code := event[2].get("loccountrycode")) \
                 and code not in self.flags_requested:
             self.flags_requested.add(code)
@@ -716,7 +662,6 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
         self.demo_view = {"demo": demo, "result": result, "names": names, "user_names": user_names,
                           "pings": dict(self.demo_pings), "saved": saved_to}
         self.demo_summary = summary_text(demo, result, names, checked_at, saved_to)
-        self.demo_meaning = meaning_text(result)
         lines = copy_lines(result, names, {self.me})
         if lines:  # what Copy gives, here too, to select and copy part of it
             self.demo_summary += "\n\nOne line per player (what Copy gives):\n" + "\n".join(lines)
@@ -739,11 +684,6 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
     def toggle_idle_rejoin(self):
         self.cfg["idle_rejoin"] = not self.cfg["idle_rejoin"]
         save_config(self.cfg)
-        self.update_idle_button()
-
-    def update_idle_button(self):
-        on = self.cfg["idle_rejoin"]
-        self.idle_button.show("ON" if on else "OFF", on)
 
     def votekick_demo_player(self):
         """The Votekick button on the Cheat check tab: for the player picked there."""
@@ -822,13 +762,11 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
     def toggle_demo_check(self):
         self.cfg["demo_check"] = not self.cfg["demo_check"]
         save_config(self.cfg)
-        self.update_demo_buttons()
 
     def toggle_record_only_flagged(self):
         self.cfg["record_only_flagged"] = not self.cfg["record_only_flagged"]
         save_config(self.cfg)
         self.sync_record_mode()
-        self.update_demo_buttons()
 
     def sync_record_mode(self):
         """Tells TF2 (over RCON, as the launch option +ds_enable does at start) whether it records
@@ -880,13 +818,6 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
     def toggle_demo_keep(self):
         self.cfg["demo_keep_only_cheaters"] = not self.cfg["demo_keep_only_cheaters"]
         save_config(self.cfg)
-        self.update_demo_buttons()
-
-    def update_demo_buttons(self):
-        for button, on in ((self.demo_check_button, self.cfg["demo_check"]),
-                           (self.demo_keep_button, self.cfg["demo_keep_only_cheaters"]),
-                           (self.demo_record_button, self.cfg["record_only_flagged"])):
-            button.show("ON" if on else "OFF", on)
 
     def toggle_mark(self):
         """The Mark cheater / Unmark button: your own marks are saved in marks.json."""
@@ -946,8 +877,8 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
     # --- main loop ---------------------------------------------------------------------
 
     def run(self):
-        """The main loop: every 150 ms it handles whatever came in from TF2 and the threads,
-        then redraws the list if anything changed."""
+        """The main loop: every 150 ms it handles whatever came in from TF2 and the threads, works
+        the flags out again if anything changed, and sends the web window its state."""
         def tick():
             while not self.toggles.empty():
                 self.toggles.get()
@@ -966,8 +897,6 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
                 self.keep_names()
                 if self.selected not in self.players:
                     self.selected = None
-                if self.visible:
-                    self.render()
             self.check_refused_chat()
             self.reload_keys()
             self.web_tick()
@@ -976,14 +905,13 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
             self.root.after(150, tick)
 
         def keep_on_top():
-            for w in (self.root, self.toast.win, self.hud.win):
+            for w in (self.toast.win, self.hud.win):
                 w.attributes("-topmost", True)
                 w.lift()
             self.root.after(2000, keep_on_top)
 
         tick()
         keep_on_top()
-        self.token_panel_loop()
         self.root.mainloop()
 
 
@@ -1058,30 +986,28 @@ def main():
     threading.Thread(target=demo_worker, args=(cfg, events), daemon=True).start()
     vk = key_to_vk(cfg["toggle_key"])
     threading.Thread(target=hotkey_listener, args=(vk, lambda: toggles.put(1)), daemon=True).start()
-    def start(web=None, web_actions=None):
-        """Builds App and runs it. With the web window, on its own thread (web_ui.run)."""
+    def start(web, web_actions):
+        """Builds App and runs it, on its own thread (web_ui.run)."""
         app = App(cfg, lines, events, toggles, commands, lookups, profile_lookups, history)
-        if web:
-            app.web, app.web_actions = web, web_actions
-            app.root.withdraw()  # the web window shows the list; Tk keeps the HUD, alerts and overlay
-        # The chat translator runs inside the scanner, unless it's already open on its own.
-        if claim_instance("tf2_chat_translator"):
-            app.translator_lines = queue.Queue()
-            app.translator = start_translator(master=app.root, chat_lines=app.translator_lines)
-            app.translator[0].on_say = app.say_translation
-            app.translator[0].on_add = app.translated
-        else:
-            print("The translator is already running in its own window, so it isn't started twice.")
+        app.web, app.web_actions = web, web_actions
+        # The chat translator runs inside the toolbox, on the chat lines it reads.
+        app.translator_lines = queue.Queue()
+        app.translator = start_translator(cfg, app.root, app.translator_lines, save=lambda c: save_config(c))
+        app.translator[0].on_say = app.say_translation
+        app.translator[0].on_add = app.translated
         app.run()
 
     import web_ui
-    if cfg["web_ui"] and web_ui.available():
-        web_ui.run(cfg, start)
-        os._exit(0)  # Tk lived on the other thread: skip Python's clean-up, which would touch it from here
-    else:
-        if cfg["web_ui"]:
-            print("pywebview isn't installed: using the classic window. Run 1 - Install.bat to get the new one.")
-        start()
+    if not web_ui.available():
+        message = "TF2 Toolbox needs pywebview for its window. Run 1 - Install.bat again, then start the toolbox."
+        print(message)
+        if not ctypes.windll.kernel32.GetConsoleWindow():  # started without a console: a print goes nowhere
+            ctypes.windll.user32.MessageBoxW(None, message, "TF2 Toolbox", 0x10)
+        sys.exit(1)
+    if not on_a_screen(cfg["x"] + 40, cfg["y"] + 10):
+        cfg["x"], cfg["y"] = 20, 20  # its monitor isn't connected now: back to the main screen
+    web_ui.run(cfg, start)
+    os._exit(0)  # Tk lived on the other thread: skip Python's clean-up, which would touch it from here
 
 
 if __name__ == "__main__":

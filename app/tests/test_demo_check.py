@@ -163,11 +163,12 @@ class AppTest(unittest.TestCase):
             self.assertEqual(data["players"][str(HIM)], "dan")
             self.assertIn(f"dan ({HIM}): 1", g.app.demo_summary)
             self.assertIn(saved, g.app.demo_summary)
-            g.on_screen_thread(g.app.update_status)
-            self.assertIn("angle_history", g.on_screen_thread(lambda: g.app.demo_summary_box.get("1.0", "end")))
-            self.assertEqual(g.on_screen_thread(lambda: g.app.demo_players_box.get(0, "end")), ("dan (1)",))
-            self.assertEqual(g.on_screen_thread(lambda: g.app.demo_dets_box.get(0, "end")), ("4585: angle_history",))
-            self.assertIn("demo_gototick 4385", g.on_screen_thread(lambda: g.app.demo_details_box.get("1.0", "end")))
+            from web_cheat_duels import cheat_state
+            s = g.on_screen_thread(lambda: cheat_state(g.app))  # what the Cheat check page shows
+            self.assertIn("angle_history", g.app.demo_summary)
+            self.assertEqual([(p["name"], p["count"]) for p in s["players"]], [("dan", 1)])
+            self.assertEqual([(d["tick"], d["check"]) for d in s["dets"]], [(4585, "angle_history")])
+            self.assertIn("demo_gototick 4385", s["goto"])
             g.on_screen_thread(g.app.copy_demo_lines)
             self.assertEqual(g.on_screen_thread(g.app.root.clipboard_get),
                              "[demo-analysis by Nocrex]: PLAYER: dan | angle_history 1 | github.com/MegaAntiCheat")
@@ -176,23 +177,19 @@ class AppTest(unittest.TestCase):
             self.assertTrue(any("dan: demo check: 1 aim flicks (weak)" in t for _, t, _ in g.app.toast.items))
         Game(demos_dir=self.folder.name).play(script)
 
-    def test_everything_on_the_tab_can_be_copied(self):
+    def test_the_copy_line_and_the_goto_tick_can_be_copied(self):
         def script(g):
+            from web_state import run_action
             g.events.put(("demo", "2026-11-05_23-40-24.dem", result(detection(HIM, "nocrex/angle_repeat", 4585)), None))
             time.sleep(0.5)
             a = g.app
-            g.on_screen_thread(a.update_status)
             line = "[demo-analysis by Nocrex]: PLAYER: dan | angle_repeat 1 | github.com/MegaAntiCheat"
             self.assertIn(line, a.demo_summary)  # the copy line is in the summary too
-            g.on_screen_thread(lambda: a.copy_from(a.demo_players_box))
+            self.assertIn("Total detections: 1", a.demo_summary)
+            g.on_screen_thread(lambda: run_action(a, "cheat_copy", []))
             self.assertEqual(g.on_screen_thread(a.root.clipboard_get), line)
-            g.on_screen_thread(lambda: a.demo_details_box.tag_add("sel", "1.0", "1.end"))
-            g.on_screen_thread(lambda: a.copy_from(a.demo_details_box))
-            self.assertEqual(g.on_screen_thread(a.root.clipboard_get), "{")
-            g.on_screen_thread(lambda: a.copy_from(a.demo_dets_box))
-            self.assertEqual(g.on_screen_thread(a.root.clipboard_get), "4585: nocrex/angle_repeat")
-            g.on_screen_thread(lambda: a.copy_from(a.demo_summary_box, everything=True))
-            self.assertIn("Total detections: 1", g.on_screen_thread(a.root.clipboard_get))
+            g.on_screen_thread(lambda: run_action(a, "cheat_copy_goto", []))
+            self.assertIn("demo_gototick", g.on_screen_thread(a.root.clipboard_get))
         Game(demos_dir=self.folder.name).play(script)
 
     def test_a_player_who_left_gets_their_name_from_the_log(self):
@@ -240,8 +237,6 @@ class AppTest(unittest.TestCase):
             g.events.put(("demo", "2026-11-05_22-27-16.dem", result(ticks=4000), None))
             time.sleep(0.5)
             self.assertIn("1.0 min read   nothing found", g.app.demo_log[0])
-            text = g.on_screen_thread(lambda: (g.app.update_status(), g.app.demo_log_label.cget("text"))[1])
-            self.assertIn("nothing found", text)
             demo_check.CHECK_NOW.clear()
             g.on_screen_thread(g.app.check_demo_now)
             self.assertTrue(demo_check.CHECK_NOW.is_set())

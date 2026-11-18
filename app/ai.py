@@ -11,12 +11,11 @@ import re
 import secrets
 import threading
 import time
-import tkinter as tk
 import urllib.request
 import zoneinfo
 from tf2_translator import CYRILLIC_RE
 
-from settings import AI_LOG_PATH, BAR_BG, HERE, load_secrets, save_config
+from settings import AI_LOG_PATH, HERE, load_secrets, save_config
 from chat import AI_REPLY_MAX_AGE, CHAT_LIMIT, console_safe, say_name, split_chat
 
 # Asked in order, smartest first: when one fails or is slow, the next is asked too.
@@ -527,7 +526,7 @@ def log_ai(started, model, outcome, tried):
 
 
 TOKEN_COLUMNS = ("MODEL", "ANSWERS LEFT", "TOKENS TODAY", "LAST ANSWER", "ASKS LEFT/MIN", "TOKENS LEFT/MIN")
-TOKEN_NOTE = "> asked first. ~: counted by the scanner, as Google doesn't report it. -: not known yet."
+TOKEN_NOTE = "> asked first. ~: counted by the toolbox, as Google doesn't report it. -: not known yet."
 
 
 def token_rows(first):
@@ -585,7 +584,6 @@ class AIMixin:
             self.apply_ai_lock(announce=False)
             if self.heavy_can_talk():
                 threading.Thread(target=self.check_ai_keys, args=(self.ai_keys(),), daemon=True).start()
-        self.update_ai_button()
 
     def ai_keys(self):
         return {"groq": self.cfg["groq_api_key"], "gemini": self.cfg["gemini_api_key"]}
@@ -627,24 +625,9 @@ class AIMixin:
         # them first only costs a backup's wait (and a 429 from Google).
         return tuple(sorted(order, key=lambda m: (ai_quota.left(m[1]) == 0, ai_quota.minute_full(m[1]))))
 
-    def show_model_menu(self):
-        """A menu of every model, best first: "Auto" or one to start with."""
-        menu = tk.Menu(self.root, tearoff=0, bg=BAR_BG, fg="white", activebackground="#2f6b3a",
-                       activeforeground="white", font=self.small)
-        choice = tk.StringVar(value=self.cfg["ai_model"])
-        for i, (model, label) in enumerate(model_choices()):
-            menu.add_radiobutton(label=label, value=model, variable=choice,
-                                 command=lambda model=model: self.pick_model(model))
-            if i == 0:  # Auto, then the models
-                menu.add_separator()
-        self.model_menu_choice = choice  # kept alive while the menu is open
-        b = self.model_button
-        menu.tk_popup(b.winfo_rootx(), b.winfo_rooty() + b.winfo_height())
-
     def pick_model(self, model):
         self.cfg["ai_model"] = model
         save_config(self.cfg)
-        self.update_model_button()
         self.notify(f"HoovyGPT now starts with {model}" if model != "auto" else "HoovyGPT picks the best available model")
 
     def model_shown(self):
@@ -653,42 +636,11 @@ class AIMixin:
         model, first = self.cfg["ai_model"], self.ai_models()[0][1]
         return (f"Auto: {first}", first) if model == "auto" else (model, model)
 
-    def update_model_button(self):
-        """The model HoovyGPT asks first, with its free answers left today."""
-        name, model = self.model_shown()
-        self.model_button.show(f"{name} ({ai_quota.label(model)})")
-
-    def toggle_token_panel(self):
-        self.cfg["token_panel"] = not self.cfg["token_panel"]
-        self.update_tokens_button()
-        self.update_token_panel()
-        save_config(self.cfg)
-
-    def update_tokens_button(self):
-        on = self.cfg["token_panel"]
-        self.tokens_button.config(text="Close the tokens window" if on else "Open in its own window")
-
-    def update_token_panel(self):
-        table = token_table(self.ai_models()[0][1])
-        # HoovyGPT's tokens only matter while it may talk: its window stays away otherwise.
-        self.token_panel.update(self.cfg["token_panel"] and self.cfg["heavy_talks"], table)
-        if self.tokens_inline.cget("text") != table:
-            self.tokens_inline.config(text=table)
-
-    def token_panel_loop(self):
-        self.update_token_panel()
-        self.root.after(1000, self.token_panel_loop)
-
-    def model_button_loop(self):
-        self.update_model_button()  # Gemini's day ends at midnight Pacific, Groq's counts recover
-        self.root.after(60_000, self.model_button_loop)
-
     def set_ai_muted(self, muted):
         if muted != self.ai_muted:
             self.ai_muted = muted
             self.ai_reply, self.ai_waiting = [], None  # muted means now, not after what's waiting
             self.say_as_ai(AI_MUTED if muted else AI_UNMUTED)
-            self.update_ai_button()
 
     def refuse_ai_command(self, command):
         """Someone else's !badbot/!goodbot while it's locked: a funny no from Heavy,
@@ -719,21 +671,11 @@ class AIMixin:
                 self.set_ai_muted(False)
             else:
                 self.ai_muted = False
-        self.update_ai_button()
 
     def pick_lock(self, lock):
         self.cfg["ai_lock"] = lock
         save_config(self.cfg)
-        self.update_lock_button()
         self.apply_ai_lock()
-
-    def update_lock_button(self):
-        lock = self.cfg["ai_lock"]
-        self.lock_control.select(lock or "off")
-
-    def update_ai_button(self):
-        text = "OFF" if not self.ai_on else "MUTED (!badbot)" if self.ai_muted else "ON"
-        self.ai_button.show(text, self.ai_on)
 
     def roast_facts(self, name, scores=True):
         """What the scanner knows about this player this match, ammo for roasts.
@@ -796,7 +738,6 @@ class AIMixin:
             if self.cfg["ai_lock"]:  # your own command moves the lock along
                 self.cfg["ai_lock"] = "muted" if self.ai_muted else "on"
                 save_config(self.cfg)
-                self.update_lock_button()
             return
         if not self.ai_on or self.ai_muted or (me and name == me.name) or msg.strip() in self.ai_said:
             return
@@ -850,7 +791,7 @@ class AIMixin:
         if msg in self.ai_said or msg.startswith(AI_PREFIX.strip()):
             self.chat_log.append((time.time(), f"HoovyGPT (you): {msg.removeprefix(AI_PREFIX.strip()).strip()}", True))
         elif me and name == me.name and msg in self.chat_sent:
-            self.chat_log.append((time.time(), f"[scanner]: {msg}", False))
+            self.chat_log.append((time.time(), f"[toolbox]: {msg}", False))
         else:
             self.chat_log.append((time.time(), f"{name}{' (team)' if team else ''}: {msg}", False))
 
@@ -882,7 +823,6 @@ class AIMixin:
 
     def ai_answered(self, question, answer, team, error):
         self.ai_asking = False
-        self.update_model_button()
         self.post_ai_answer(question, answer, team, error)
         self.ask_waiting_ai()
 

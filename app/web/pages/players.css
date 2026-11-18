@@ -1,118 +1,266 @@
-/* players: page styles beyond the shared ones in index.html */
+/* players: page styles beyond the shared ones in index.html.
+   Visual pass: Bahnschrift caps for headings and buttons, the code font only for numbers, one sans
+   for text; red only for cheaters, orange for suspicious and weak; spacing 8/16/24. The font and
+   colour variables come from index.html when it has them, with fallbacks until then. */
+#p-players{
+  --pl-head:var(--f-head,Bahnschrift,"Barlow Condensed","Arial Narrow",sans-serif);
+  --pl-text:var(--f-text,"Segoe UI",system-ui,sans-serif);
+  --pl-num:var(--f-num,"JetBrains Mono",Consolas,monospace);
+  --pl-bad:var(--bad,#ff5a52);
+  --pl-bad-d:var(--bad-d,rgba(255,90,82,.10));
+  --pl-warn:var(--warn,#ff9640);
+  --pl-weak:rgba(255,150,64,.72);
+  --pl-enemy:rgba(255,120,112,.55);  /* the enemy team's thin left line: soft, not a red frame */
+  --pl-ally:rgba(78,168,255,.55);
+  font-family:var(--pl-text);
+}
+#p-players .btn,#p-players .chip,#p-players .lab,#p-players .tname,#p-players .pt th,#p-players .pl-menu button,
+#p-players .pl-hudl,#p-players .dsub{font-family:var(--pl-head)}
+#p-players .btn,#p-players .chip,#p-players .pl-menu button,#p-players .pl-grp,#p-players .pt tbody tr td,
+#p-players .pl-stamp,#p-players .pl-band{transition:background-color var(--fade,.1s) ease-out,color var(--fade,.1s) ease-out,border-color var(--fade,.1s) ease-out,box-shadow var(--fade,.1s) ease-out}
 
-/* no player selected: the list takes the whole width (the Tk window hides the panel too) */
+/* the toolbar: 8 px between things, 16/24 px around */
+#p-players .toolbar{padding:8px 16px 8px 24px;gap:8px;flex-wrap:wrap;row-gap:8px}
+#p-players .toolbar .search{width:176px}
+#p-players .toolbar .chip{padding:0 8px}
+#p-players .toolbar > *{flex-shrink:0}
+#p-players .toolbar .chip{white-space:nowrap}
+#p-players .toolbar .btn svg{width:14px;height:14px;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
+
+/* no player selected: the list takes the whole width */
 .pgrid.pl-nopanel{grid-template-columns:1fr}
 .pgrid.pl-nopanel .detail{display:none}
+#p-players .pgrid{grid-template-columns:1fr 336px}
+#p-players .pgrid.pl-nopanel{grid-template-columns:1fr}
 
-/* a team whose colour isn't known yet */
-.team.unk{--tc:var(--ln2);--tcd:rgba(123,137,150,.06)}
+/* the list is the page's one main panel: corner brackets (class brk) around it, not on the teams */
+#p-players .pl-list{display:flex;flex-direction:column;min-width:0;min-height:0;margin:16px 8px 16px 16px;background:transparent;border-color:var(--ln)}
+#p-players .teams{flex:1;min-height:0;padding:8px;gap:16px}
+#p-players .teams > .team{min-width:min-content}
+#p-players .team{border-left:2px solid var(--pl-ally)}
+#p-players .team.pl-enemy{border-left-color:var(--pl-enemy)}
+#p-players .team.unk{border-left-color:var(--ln2);--tc:var(--tx2);--tcd:rgba(123,137,150,.06)}
+#p-players .team::before,#p-players .team::after{content:none}
+#p-players .thead{gap:16px;padding:8px 16px;background:linear-gradient(90deg,rgba(255,255,255,.025),transparent 60%)}
+#p-players .tname em{color:var(--tx2)}
+#p-players .team.blu .tname em{color:#7dbdff}
+#p-players .team.red .tname em{color:#e9908a}
+#p-players .tmeta{font-family:var(--pl-text);font-size:12px;color:var(--tx2);white-space:nowrap}
+#p-players .tmeta .fl{color:var(--tx2)}
+#p-players .tmeta .fl.on{color:var(--pl-warn)}
+#p-players .tmeta .pl-cheats{color:var(--pl-bad)}
+#p-players .lu{font-family:var(--pl-num)}
+.team .thead .tname{white-space:nowrap;flex:none}
+.thead.pl-hasinfo .pl-cnt{border-bottom:1px dotted var(--ln2);cursor:help}
 
-/* sortable column titles (click: like the Tk list) */
+/* rows: about 44 px, columns aligned, 8 px cell padding */
+#p-players .pt th{padding:0 8px;height:32px}
+#p-players .pt td{height:44px;padding:0 8px}
+#p-players .pt td.pl-mk{padding-right:0}
 .pt th{cursor:pointer;-webkit-user-select:none;user-select:none}
 .pt th:hover{color:var(--tx2)}
 .pt th.srt{color:var(--ac)}
+.pt tbody tr[data-sid]{cursor:default}
+#p-players .pn{font-family:var(--pl-text);font-weight:600}
+#p-players .pn small,#p-players .kd,#p-players .hp .v,#p-players .hp .mx,.pl-oc{font-family:var(--pl-num)}
+#p-players .cls span{font-family:var(--pl-text)}
+/* the selected row: a soft teal glow */
+#p-players .pt tbody tr.sel td{background:rgba(45,226,200,.07);box-shadow:inset 0 1px 0 rgba(45,226,200,.28),inset 0 -1px 0 rgba(45,226,200,.28)}
+#p-players .pt tbody tr.sel td:first-child{box-shadow:inset 2px 0 0 var(--ac),inset 0 1px 0 rgba(45,226,200,.28),inset 0 -1px 0 rgba(45,226,200,.28)}
+#p-players .pt tbody tr.sel td:last-child{box-shadow:inset 0 1px 0 rgba(45,226,200,.28),inset 0 -1px 0 rgba(45,226,200,.28),12px 0 24px -12px rgba(45,226,200,.35)}
+/* a player who just became flagged: one pulse, never looping */
+@keyframes pl-pulse{0%{background-color:rgba(255,150,64,.24)}100%{background-color:transparent}}
+@keyframes pl-pulse-bad{0%{background-color:rgba(255,90,82,.26)}100%{background-color:transparent}}
+#p-players .pt tbody tr.pl-pulse td{animation:pl-pulse 1.2s ease-out 1}
+#p-players .pt tbody tr.pl-pulse.t-bad td{animation-name:pl-pulse-bad}
 
 /* "TEAM NOT KNOWN YET" above players whose team isn't known */
 .pt tbody tr.pl-sub{cursor:default}
-.pt tbody tr.pl-sub td{height:26px;background:var(--s2);font-family:var(--f-lab);font-weight:600;font-size:11.5px;letter-spacing:.16em;color:var(--tx3)}
+.pt tbody tr.pl-sub td{height:32px;background:var(--s2);font-family:var(--pl-head);font-weight:600;font-size:11.5px;letter-spacing:.16em;color:var(--tx3)}
 .pt tbody tr.pl-sub:hover td{background:var(--s2)}
+
+/* the Mark bar: red only for a cheater, orange for the rest */
+#p-players .m-red{background:var(--pl-bad);box-shadow:0 0 8px rgba(255,90,82,.5)}
+#p-players .m-org{background:var(--pl-warn)}
+#p-players .m-yel{background:var(--pl-weak);opacity:.7}
 
 /* class icons from TF2, country flags */
 .pl-ci{width:20px;height:20px;display:block;flex:none;image-rendering:auto}
 .pl-flag{width:20px;height:15px;display:block;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
-.pl-oc{font-family:var(--f-num);font-size:12px;color:var(--tx2)}
-
-/* the rubber stamp in front of the worst flag */
-.pl-stamp{display:inline-block;vertical-align:middle;font-family:var(--f-lab);font-weight:700;font-size:11px;line-height:1;
-  letter-spacing:.14em;text-transform:uppercase;padding:4px 6px 3px;border:2px solid currentColor;border-radius:4px;
-  transform:rotate(-3deg);box-shadow:inset 0 0 0 1px rgba(0,0,0,.35);background:rgba(0,0,0,.25);margin-right:9px}
-.pl-ftx{vertical-align:middle;font-size:13px;font-weight:500}
-
-/* the Columns menu */
-.pl-colwrap{position:relative;display:inline-flex}
-.pl-colmenu{position:absolute;top:calc(100% + 4px);left:0;z-index:40;min-width:180px;background:var(--s1);border:1px solid var(--ln2);
-  box-shadow:0 12px 30px rgba(0,0,0,.6);padding:4px 0;display:flex;flex-direction:column}
-.pl-colmenu[hidden]{display:none}
-.pl-colmenu button{display:flex;align-items:center;gap:10px;height:28px;padding:0 12px;text-align:left;font-family:var(--f-lab);
-  font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx2)}
-.pl-colmenu button:hover{background:var(--s2);color:var(--tx)}
-.pl-colmenu .ck{width:12px;height:12px;border:1px solid var(--ln2);background:var(--bg);flex:none;position:relative}
-.pl-colmenu button.on{color:var(--tx)}
-.pl-colmenu button.on .ck{border-color:var(--ac);background:var(--ac-d)}
-.pl-colmenu button.on .ck::after{content:"";position:absolute;inset:2px;background:var(--ac)}
-
-/* the panel: close button, the extra line, the link and greyed-out buttons */
-.dh .lab{align-items:center;padding-right:96px}
-.pl-close{position:absolute;top:10px;right:10px;width:24px;height:24px;display:grid;place-items:center;color:var(--tx3);font-size:12px}
-.pl-close:hover{color:var(--tx);background:var(--s3)}
-.dh .verdict{right:44px}
-.pl-about{margin-top:6px;font-family:var(--f-num);font-size:11px;color:var(--tx3)}
-.str.info{color:var(--tx3);border-color:var(--ln2)}
-.btn.pl-link{color:#7dbdff;border-color:#24476d;background:#0b1724}
-.btn.pl-link:hover{color:#a6d2ff;border-color:#3d6fa3;background:#10253a}
-.detail button:disabled,.detail button:disabled:hover{opacity:.35;cursor:default;transform:none}
-.agrid .btn:disabled:hover{border-color:var(--ln2);color:var(--tx);background:var(--s2)}
-.agrid .btn.dng:disabled:hover{border-color:rgba(255,90,82,.55);color:#ff8a83;background:var(--red-d)}
-.agrid .btn.pl-link:disabled:hover{color:#7dbdff;border-color:#24476d;background:#0b1724}
-.sgrid button:disabled:hover{color:var(--tx2);background:none}
+.pl-oc{font-size:12px;color:var(--tx2)}
 .pt td .cls{display:flex}
-.teams::-webkit-scrollbar,.detail::-webkit-scrollbar{width:8px}
-.teams::-webkit-scrollbar-thumb,.detail::-webkit-scrollbar-thumb{background:var(--ln2)}
 
-/* "likely together" guesses: a small chip per group, the team line, the panel line, the (Why?) tooltip */
-.pl-grp{display:inline-block;vertical-align:middle;margin-left:8px;padding:1px 4px 0;border:1px solid currentColor;border-radius:2px;
-  font-family:var(--f-num);font-size:9.5px;line-height:13px;letter-spacing:.04em;cursor:help;background:rgba(0,0,0,.25)}
+/* HP: a fixed-width bar so "/125" and "/300" line up */
+#p-players .hp{gap:8px}
+#p-players .hp .v{width:32px}
+#p-players .hp .mx{width:32px}
+#p-players .pt .hp .bar{width:88px!important;min-width:88px;flex:none}
+
+/* the one stamp: tilted (design C), the score inside, e.g. CHEATER 98% */
+.pl-stamp{display:inline-flex;align-items:center;gap:8px;vertical-align:middle;font-family:var(--pl-head);font-weight:700;font-size:11px;line-height:1;
+  letter-spacing:.14em;text-transform:uppercase;padding:4px 8px 3px;border:2px solid currentColor;border-radius:4px;white-space:nowrap;
+  transform:rotate(-3deg);box-shadow:inset 0 0 0 1px rgba(0,0,0,.35);background:rgba(0,0,0,.25)}
+.pl-stamp b{font-family:var(--pl-num);font-weight:700;letter-spacing:0;font-size:11px;padding-left:8px;border-left:1px solid currentColor}
+.pl-stamp.t-bad{color:var(--pl-bad)}
+.pl-stamp.t-warn{color:var(--pl-warn)}
+.pl-stamp.t-weak{color:var(--pl-weak);border-width:1px}
+.noflag{font-family:var(--pl-num)}
+
+/* menus (Columns, Post in chat) */
+.pl-menuwrap{position:relative;display:inline-flex}
+@keyframes pl-fade{from{opacity:0}to{opacity:1}}
+.pl-menu{position:absolute;top:calc(100% + 8px);left:0;z-index:40;min-width:184px;background:var(--s1);border:1px solid var(--ln2);
+  box-shadow:0 12px 30px rgba(0,0,0,.6);padding:8px 0;display:flex;flex-direction:column;animation:pl-fade var(--fade,.1s) ease-out}
+.pl-menu[hidden]{display:none}
+.pl-menu button{display:flex;align-items:center;gap:8px;height:32px;padding:0 16px;text-align:left;
+  font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx2)}
+.pl-menu button:hover{background:var(--s2);color:var(--tx)}
+.pl-menu .ck{width:12px;height:12px;border:1px solid var(--ln2);background:var(--bg);flex:none;position:relative}
+.pl-menu button.on{color:var(--tx)}
+.pl-menu button.on .ck{border-color:var(--ac);background:var(--ac-d)}
+.pl-menu button.on .ck::after{content:"";position:absolute;inset:2px;background:var(--ac)}
+.pl-menu.pl-right{left:auto;right:0}
+.pl-caret{font-size:10px;color:var(--tx3);margin-left:-2px}
+/* Post in chat: each item shows the exact message it posts */
+.pl-menu.pl-saymenu{width:392px;padding:0}
+.pl-saymenu button{height:auto;flex-direction:column;align-items:stretch;gap:4px;padding:8px 16px;border-bottom:1px solid var(--ln)}
+.pl-saymenu button:last-child{border-bottom:0}
+.pl-saymenu .pl-mt{color:var(--tx)}
+.pl-saymenu button:hover .pl-mt{color:var(--ac)}
+.pl-saymenu .pl-mh{font-family:var(--pl-text);font-weight:400;font-size:11px;letter-spacing:0;text-transform:none;color:var(--tx3)}
+.pl-saymenu .pl-mp{font-family:var(--pl-text);font-weight:400;font-size:12px;letter-spacing:0;text-transform:none;color:var(--tx2);
+  white-space:normal;line-height:1.4;padding:4px 8px;border-left:2px solid var(--ac-m);background:var(--bg)}
+
+/* the "?" legend button, the Mini HUD switch */
+.btn.pl-legbtn{width:28px;padding:0;justify-content:center;font-family:var(--pl-num)!important;font-size:13px;letter-spacing:0;cursor:help}
+.pl-hud{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.pl-hud .sw{cursor:pointer;outline:none}
+.pl-hud .sw:focus-visible{box-shadow:0 0 0 1px var(--ac)}
+.pl-hudl{font-weight:600;font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);cursor:pointer;
+  -webkit-user-select:none;user-select:none}
+.pl-hud.on .pl-hudl{color:var(--ac)}
+.pl-legtip{max-width:none}
+.pl-leg{display:grid;grid-template-columns:auto auto auto auto auto;align-items:center;gap:8px 16px;font-family:var(--pl-num);font-size:10.5px}
+.pl-leg b{grid-column:1;font-family:var(--pl-head);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--tx3);font-size:11px}
+.pl-leg span{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;color:var(--tx2)}
+.pl-leg i{width:10px;height:4px;display:inline-block}
+.pl-leg i.lg-bad{background:var(--pl-bad)}
+.pl-leg i.lg-warn{background:var(--pl-warn)}
+.pl-leg i.lg-weak{background:var(--pl-weak);opacity:.7}
+
+/* "likely together" guesses: a small chip per group, the team line, the card line, (Why?) */
+.pl-grp{display:inline-flex;align-items:center;gap:2px;vertical-align:middle;margin-left:8px;padding:0 4px 0 3px;border:1px solid currentColor;
+  border-radius:2px;font-family:var(--pl-num);font-size:10px;line-height:14px;cursor:help;background:rgba(0,0,0,.25)}
+.pl-link-i{width:10px;height:10px;flex:none;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round}
 .pl-grp:hover{background:rgba(255,255,255,.06)}
 .pl-grp.g0{color:#c58cff}.pl-grp.g1{color:#3fdc8a}.pl-grp.g2{color:#ff8ad8}
 .pl-grp.g3{color:#8ccfff}.pl-grp.g4{color:#e0c58a}.pl-grp.g5{color:#2de2c8}
 .pt td .pn{vertical-align:middle}
-/* the name ellipsizes before its group chip does (the full name is the title, on hover) */
 .pl-pw{display:flex;align-items:center;min-width:0}
 .pl-pw .pn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pl-pw .pl-grp{flex:none}
-.pl-gc{color:var(--tx2);white-space:nowrap}
-.pl-why{font-family:var(--f-num);font-size:10.5px;color:var(--tx3);cursor:help;border-bottom:1px dotted var(--ln2);outline:none}
+.pl-gc{display:inline-flex;align-items:center;gap:4px;color:var(--tx2);white-space:nowrap}
+.pl-gc .pl-link-i{color:var(--tx3)}
+.pl-why{font-family:var(--pl-num);font-size:10.5px;color:var(--tx3);cursor:help;border-bottom:1px dotted var(--ln2);outline:none}
 .pl-why:hover,.pl-why:focus{color:var(--ac);border-bottom-color:var(--ac)}
-.pl-tog{margin-top:8px;font-size:12px;color:var(--tx2);display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.pl-tog{margin-top:8px;font-size:12px;color:var(--tx2);display:flex;align-items:center;flex-wrap:wrap;gap:8px}
 .pl-tog .pl-grp{margin-left:0}
-.pl-tip{position:fixed;z-index:1000;display:none;max-width:320px;padding:8px 10px;background:#05080b;border:1px solid var(--ac);
-  box-shadow:0 10px 26px rgba(0,0,0,.65);font-family:var(--f-ui);font-size:11.5px;line-height:1.45;color:var(--tx2);pointer-events:none}
 
-/* the team name never breaks onto two lines when the header gets long */
-.team .thead .tname{white-space:nowrap;flex:none}
+/* the one tooltip: fades in over 100 ms */
+.pl-tip{position:fixed;z-index:1000;display:none;max-width:320px;padding:8px 16px 8px 8px;background:#05080b;border:1px solid var(--ac);
+  box-shadow:0 10px 26px rgba(0,0,0,.65);font-family:var(--f-text,"Segoe UI",system-ui,sans-serif);font-size:12px;line-height:1.45;
+  color:var(--tx2);pointer-events:none;animation:pl-fade var(--fade,.1s) ease-out}
+.pl-tip .pl-tiph{font-size:11px;color:var(--tx3);margin-bottom:4px}
+.pl-tip .pl-saymsg{color:var(--tx);padding:4px 8px;border-left:2px solid var(--ac-m);background:var(--s1)}
+.pl-tip.pl-saytip{max-width:360px}
 
-/* the cheater score (cheat_score.py): its band as a chip, the panel's score, the multipliers, the tooltip */
-.cs-band{display:inline-block;vertical-align:middle;font-family:var(--f-num);font-size:10px;font-weight:700;line-height:16px;
-  padding:0 5px;border:1px solid;letter-spacing:.04em;white-space:nowrap;margin-right:9px}
-.cs-band.b-Clean{color:var(--tx3);border-color:var(--ln2)}
-.cs-band.b-Watch{color:var(--yel);border-color:rgba(242,208,75,.45)}
-.cs-band.b-Suspicious{color:var(--org);border-color:rgba(255,150,64,.55)}
-.cs-band.b-Likely{color:#1a0505;background:var(--red);border-color:var(--red)}
-.cs-band.b-Proven{color:#1a0505;background:var(--red);border-color:var(--red);box-shadow:0 0 0 1px #1a0505,0 0 0 2px var(--red)}
-.dh .verdict.cs-band{margin:0;font-size:10.5px;line-height:18px;cursor:help;outline:none}
-.dh .verdict.cs-band:focus{box-shadow:0 0 0 1px var(--ac)}
-.dh .lab{padding-right:150px}
-.pt tbody tr[data-sid]{cursor:default}
-.reason .cs-lr{margin-left:auto;flex:none;font-family:var(--f-num);font-size:11px;font-weight:700;line-height:18px;padding-left:8px}
-.cs-lr.up{color:#ff8a83}.cs-lr.dn{color:#3fdc8a}
-.pl-tip.cs-tip{max-width:460px;width:max-content;padding:9px 11px;font-size:11.5px}
-.cs-tip .cs-s{color:var(--tx2);font-family:var(--f-num);font-size:10.5px;padding-bottom:5px;border-bottom:1px solid var(--ln2);margin-bottom:5px}
-.cs-tip .cs-r{display:flex;gap:9px;align-items:baseline;padding:2px 0}
-.cs-tip .cs-r b{flex:none;width:46px;text-align:right;font-family:var(--f-num);font-size:11.5px}
+/* the cheater score's tooltip */
+.pl-tip.cs-tip{max-width:460px;width:max-content;padding:8px 16px 8px 8px;font-size:11.5px}
+.cs-tip .cs-s{color:var(--tx2);font-family:var(--f-num,Consolas,monospace);font-size:10.5px;padding-bottom:4px;border-bottom:1px solid var(--ln2);margin-bottom:4px}
+.cs-tip .cs-r{display:flex;gap:8px;align-items:baseline;padding:2px 0}
+.cs-tip .cs-r b{flex:none;width:48px;text-align:right;font-family:var(--f-num,Consolas,monospace);font-size:11.5px}
 .cs-tip .cs-r b.up{color:#ff8a83}.cs-tip .cs-r b.dn{color:#3fdc8a}.cs-tip .cs-r b.pf{color:var(--red)}
 .cs-tip .cs-r span{color:var(--tx)}
 .cs-tip .cs-r em{font-style:normal;color:var(--tx3)}
-.cs-tip .cs-e{margin-top:6px;padding-top:6px;border-top:1px solid var(--ln2);font-family:var(--f-num);font-size:11px;color:var(--tx2);
-  display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.cs-tip .cs-e{margin-top:8px;padding-top:8px;border-top:1px solid var(--ln2);font-family:var(--f-num,Consolas,monospace);font-size:11px;color:var(--tx2);
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .cs-tip .cs-e b{color:var(--tx);font-size:12.5px}
 .cs-tip .cs-e i{font-style:normal;color:var(--ac)}
-.cs-tip .cs-w{font-family:var(--f-num);font-size:10.5px;font-weight:700;line-height:16px;padding:0 5px;border:1px solid}
+.cs-tip .cs-w{font-size:10.5px;font-weight:700;line-height:16px;padding:0 4px;border:1px solid}
 .cs-tip .cs-w.b-Clean{color:var(--tx3);border-color:var(--ln2)}
-.cs-tip .cs-w.b-Watch{color:var(--yel);border-color:rgba(242,208,75,.45)}
-.cs-tip .cs-w.b-Suspicious{color:var(--org);border-color:rgba(255,150,64,.55)}
+.cs-tip .cs-w.b-Watch{color:var(--pl-weak,#ff9640);border-color:rgba(255,150,64,.4)}
+.cs-tip .cs-w.b-Suspicious{color:#ff9640;border-color:rgba(255,150,64,.55)}
 .cs-tip .cs-w.b-Likely,.cs-tip .cs-w.b-Proven{color:#1a0505;background:var(--red);border-color:var(--red)}
 .cs-tip .cs-n{margin-top:4px;font-size:10.5px;color:var(--tx3)}
 
-/* the list: the score as a compact percentage, the stamp and flag text keep their room */
-.pt .cs-band.cs-mini{padding:1px 5px;margin-right:6px;letter-spacing:0}
-.pt .hp .bar{width:90px!important;flex:none}
+/* ===== the side panel: a player card ===== */
+#p-players .detail{padding:0}
+.teams::-webkit-scrollbar,.detail::-webkit-scrollbar{width:8px}
+.teams::-webkit-scrollbar-thumb,.detail::-webkit-scrollbar-thumb{background:var(--ln2)}
+.pl-card{position:relative;padding:16px;border-bottom:1px solid var(--ln);background:linear-gradient(180deg,rgba(255,255,255,.03),transparent)}
+#pl-detail[data-tone="bad"] .pl-card{background:linear-gradient(180deg,var(--pl-bad-d),transparent)}
+#pl-detail[data-tone="warn"] .pl-card{background:linear-gradient(180deg,rgba(255,150,64,.07),transparent)}
+.pl-close{position:absolute;top:8px;right:8px;width:24px;height:24px;display:grid;place-items:center;color:var(--tx3);font-size:12px}
+.pl-close:hover{color:var(--tx);background:var(--s3)}
+.pl-who{display:flex;align-items:center;gap:16px;padding-right:24px}
+.pl-av{width:48px;height:48px;flex:none;display:grid;place-items:center;border:1px solid var(--ln2);background:var(--bg);overflow:hidden}
+.pl-av img{width:100%;height:100%;display:block;object-fit:cover}
+.pl-av span{font-family:var(--pl-head);font-size:22px;font-weight:700;color:var(--tx3)}
+.pl-whot{min-width:0}
+#p-players .pl-card .dname{margin-top:0;font-family:var(--pl-text);font-size:20px}
+#p-players .pl-card .dsub{margin-top:4px}
+#p-players .dsub .side-t{color:#e9908a}
+#p-players .dsub .side-t.blu{color:#7dbdff}
+/* the band as a big label: LIKELY CHEATER · 98% */
+.pl-band{margin-top:16px;display:flex;align-items:baseline;gap:8px;padding:8px 16px 8px 8px;border-left:3px solid currentColor;
+  font-family:var(--pl-head);font-weight:700;font-size:20px;letter-spacing:.08em;text-transform:uppercase;line-height:1.1;
+  cursor:help;outline:none;background:rgba(255,255,255,.03);color:var(--tx2)}
+.pl-band b{font-family:var(--pl-num);font-size:18px;letter-spacing:0}
+.pl-band .pl-dot{color:var(--tx3);font-weight:400}
+.pl-band.t-bad{color:var(--pl-bad);background:var(--pl-bad-d)}
+.pl-band.t-warn{color:var(--pl-warn);background:rgba(255,150,64,.07)}
+.pl-band.t-weak{color:var(--pl-weak)}
+.pl-band:focus{box-shadow:0 0 0 1px var(--ac)}
+.pl-about{margin-top:8px;font-family:var(--pl-text);font-size:12px;color:var(--tx3)}
+
+/* Why flagged as a receipt: each clue left, its multiplier right-aligned, the score at the bottom */
+.pl-receipt{padding:16px;border-bottom:1px solid var(--ln)}
+.pl-receipt .lab{display:block;margin-bottom:8px}
+.pl-rcs{border-top:1px dashed var(--ln2);border-bottom:1px dashed var(--ln2)}
+.pl-rc{display:flex;align-items:flex-start;gap:16px;padding:8px 0;border-bottom:1px dashed var(--ln)}
+.pl-rc:last-child{border-bottom:0}
+.pl-rc p{flex:1;min-width:0;font-size:13px;line-height:1.35;color:var(--tx)}
+.pl-rc small{display:block;margin-top:2px;font-size:11px;line-height:1.4;color:var(--tx3)}
+.pl-rc > b{flex:none;min-width:48px;text-align:right;font-family:var(--pl-num);font-size:12px;font-weight:700;line-height:18px;color:var(--tx2)}
+.pl-rc-start p{color:var(--tx3);font-size:12px}
+.pl-rc.pl-rc-total{border-top:1px dashed var(--ln2);border-bottom:0}
+.pl-rc-total p{font-family:var(--pl-head);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:13px}
+.pl-rc-total > b{font-size:14px;color:var(--tx)}
+.pl-rc-total > b.t-bad{color:var(--pl-bad)}.pl-rc-total > b.t-warn{color:var(--pl-warn)}.pl-rc-total > b.t-weak{color:var(--pl-weak)}
+.pl-lr.up{color:#ff9d96}.pl-lr.dn{color:#3fdc8a}
+.pl-rc > b.pl-lr.pf{color:#1a0505;background:var(--pl-bad);text-align:center;padding:0 4px}
+.pl-yours{display:inline-block;vertical-align:1px;margin-right:8px;padding:0 4px;font-family:var(--pl-head);font-size:10px;font-weight:700;
+  line-height:15px;letter-spacing:.08em;text-transform:uppercase;color:var(--ac);border:1px solid var(--ac)}
+.pl-none{color:var(--tx3);font-size:12.5px;padding:8px 0}
+
+/* the actions: at the bottom of the card, always in view */
+.pl-actions{margin-top:auto;position:sticky;bottom:0;padding:16px;background:var(--s1);border-top:1px solid var(--ln2);
+  display:flex;flex-direction:column;gap:8px}
+.pl-actions .lab{display:block}
+.pl-agrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pl-agrid .btn{justify-content:center;height:32px;padding:0 8px;font-size:12px;letter-spacing:.06em}
+.pl-agrid .btn svg{width:14px;height:14px;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
+.pl-says{margin-bottom:0}
+/* Votekick: an outline, not a filled red button */
+.pl-agrid .btn.pl-kick{background:transparent;border-color:rgba(255,120,112,.45);color:#f0a29c}
+.pl-agrid .btn.pl-kick:hover{background:transparent;border-color:#ff8a83;color:#ffb8b2}
+.btn.pl-link{color:#7dbdff;border-color:#24476d;background:#0b1724}
+.btn.pl-link:hover{color:#a6d2ff;border-color:#3d6fa3;background:#10253a}
+/* a button that doesn't apply: greyed, but its hover still says why */
+.pl-agrid .btn.off,.pl-agrid .btn.off:hover{opacity:.4;cursor:default;transform:none;border-color:var(--ln2);color:var(--tx2);background:var(--s2)}
+.pl-agrid .btn.pl-kick.off:hover{background:transparent;border-color:rgba(255,120,112,.45);color:#f0a29c}
+
+/* no motion for those who asked for less */
+@media (prefers-reduced-motion: reduce){
+  #p-players *,.pl-tip,.pl-menu{animation:none!important;transition:none!important}
+}

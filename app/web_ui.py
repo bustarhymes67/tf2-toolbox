@@ -7,7 +7,7 @@ instead of with Tkinter. The scanner itself does not change: App still runs on i
 - carries clicks on the page back to App as named actions (Api.act -> App.web_actions), which
   App runs on its own thread, so nothing from here touches Tk directly.
 
-Without pywebview (or with the "web_ui" setting off) the scanner uses its Tk window as before."""
+Without pywebview the toolbox can't start: '1 - Install.bat' installs it."""
 
 import ctypes
 import json

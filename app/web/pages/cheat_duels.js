@@ -26,6 +26,19 @@
     sw.onkeydown = e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); flip(); } };
   }
 
+  // Numbers in a plain text in the code font (the visual pass: the code font only for numbers).
+  // Not the digits of an escaped character (&#39;) or inside a word (a name like "Player2").
+  function numHTML(text) {
+    return esc(text).replace(/(?<!&#)\b\d+(?:[.:]\d+)*\b/g, n => `<span class="num">${n}</span>`);
+  }
+
+  // Thin outline icons, the sidebar's style (16x16, stroke only).
+  const ICON = {
+    kick: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="5" r="2.5"/><path d="M1.5 14c0-2.8 2-4.5 4.5-4.5s4.5 1.7 4.5 4.5"/><path d="M11 6.5h4"/></svg>`,
+    export: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 10V2M5 5l3-3 3 3"/><path d="M3 8.5V14h10V8.5"/></svg>`,
+    chevron: `<svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5l3 3 3-3"/></svg>`,
+  };
+
   function setSwitch(sw, on, text) {
     sw.dataset.on = on ? "1" : "0";
     const t = sw.nextElementSibling;
@@ -33,18 +46,6 @@
   }
 
   // ---------------------------------------------------------------- Cheat check
-
-  const SUMMARY_KEY = /^([A-Z][A-Za-z ()']*?):(\s|$)/;
-
-  // demo_check.summary_text with the mockup's look: keys bold and in capitals, STRONG in red.
-  function summaryHTML(text) {
-    return text.split("\n").map(line => {
-      const m = SUMMARY_KEY.exec(line);
-      if (m && !line.startsWith(" ")) return `<b>${esc(m[1].toUpperCase())}</b>${esc(line.slice(m[1].length + 1))}`;
-      return esc(line).replace(/STRONG( \([^)]*\))?/g, s => `<span class="r">${s}</span>`)
-                      .replace(/(\d+ detections?)/, s => line.includes("STRONG") ? `<span class="r">${s}</span>` : s);
-    }).join("\n");
-  }
 
   // The details JSON with the mockup's colours: keys, strings, numbers.
   function jsonHTML(text) {
@@ -54,22 +55,50 @@
     });
   }
 
-  function logHTML(lines) {
-    if (!lines.length) return `<span class="lab">Last checks</span><div class="cl">No checks yet.</div>`;
-    return `<span class="lab">Last checks</span><div>` + lines.map(line => {
-      const parts = line.split(/\s{3,}/);
-      const found = parts.findIndex(p => /^found /.test(p));
-      return `<div class="cl"><b>${esc(parts[0])}</b>` + parts.slice(1).map((p, i) =>
-        ` &middot; ${i + 1 === found ? `<span class="r">${esc(p)}</span>` : esc(p)}`).join("") + `</div>`;
-    }).join("") + `</div>`;
+  // One check of the log: time, how much was read, what was found; the demo only when it isn't the table's.
+  function checkHTML(e) {
+    return `<b class="num">${esc(e.time)}</b>` + (e.demo ? ` &middot; ${esc(e.demo)}` : "") + (e.read ? ` &middot; ${numHTML(e.read)}` : "") +
+      (e.found ? ` &middot; <span class="${/^found /.test(e.found) ? "f" : ""}">${numHTML(e.found)}</span>` : "") +
+      (e.after ? ` &middot; ${esc(e.after)}` : "");
+  }
+
+  function lastHTML(log) {
+    if (!log.length) return `<span class="lab">Last check</span><span>none yet</span>`;
+    return `<span class="lab">Last check</span><span class="cl">${checkHTML(log[0])}</span>`;
+  }
+
+  // The checked demo: map, length and file on one line, then one row per player and check.
+  function tableHTML(t) {
+    if (!t) return `<div class="pnl-h"><span class="lab">Found in the demo</span></div><div class="empty">Nothing found yet.</div>`;
+    const head = `<div class="pnl-h"><span class="lab">Found in the demo</span>` +
+      `<span class="dmeta">${esc(t.map)} &middot; <span class="num">${esc(t.duration)}</span> &middot; ${esc(t.file)}</span></div>`;
+    if (!t.rows.length) return head + `<div class="empty">Nothing found in this demo.</div>`;
+    let last = null;
+    return head + `<table class="dt ftab"><thead><tr><th>Player</th><th>What was found</th><th class="r">Times</th><th class="r">Strength</th></tr></thead><tbody>` +
+      t.rows.map(r => {
+        const first = r.sid !== last;
+        last = r.sid;
+        return `<tr class="${first ? "pfirst" : "pmore"}"><td>${first ? esc(r.name) + (r.you ? ` <span class="you">(you)</span>` : "") : ""}</td>` +
+          `<td><span class="about">${esc(r.about)}</span><span class="ck">${esc(r.check)}</span></td>` +
+          `<td class="r num">${r.count}</td>` +
+          `<td class="r"><span class="str ${r.strong ? "strong" : "weak"}">${r.strong ? "STRONG" : "weak"}</span></td></tr>`;
+      }).join("") + `</tbody></table>`;
   }
 
   function meaningHTML(entries) {
     return entries.map(e => `<div class="mean">
-        <div class="mh"><code>${esc(e.check)}</code><span class="str ${e.strong ? "strong" : "weak"}">${e.strong ? "STRONG" : "WEAK"}</span></div>
+        <div class="mh"><span class="ck">${esc(e.check)}</span><span class="str ${e.strong ? "strong" : "weak"}">${e.strong ? "STRONG" : "WEAK"}</span></div>
         <div class="ma">${esc(e.about)}</div>
         <p>${esc(e.meaning)}</p></div>`).join("");
   }
+
+  // The Export menu: what the FOUND bar's other four buttons did. Each named by what it does.
+  const EXPORTS = [
+    ["cheat_copy", "Copy chat lines", "Copies one line per player, each fits a TF2 chat message"],
+    ["cheat_export", "Save evidence file", "A folder next to the demos with the demo, its detections and a report, for the picked player"],
+    ["cheat_open", "Open demo", "Show a saved cheat check result (from this or an earlier match)"],
+    ["cheat_open_folder", "Open demos folder", "Open TF2's demos folder"],
+  ];
 
   let cheatBuilt = false;
   function buildCheat(sec) {
@@ -77,30 +106,37 @@
       <div class="ph"><h1>Cheat check</h1><span class="crumb">// demo analysis &middot; local</span></div>
       <div class="pad">
         <div class="row">
-          <div class="pnl"><div class="set"><div class="st"><b>Live cheat check</b><span>Checks the demo TF2 records about once a minute, with demo-analysis.</span></div><span class="sw" data-k="check" role="switch" tabindex="0"></span><span class="swtxt"></span></div></div>
+          <div class="pnl"><div class="set"><div class="st"><b>Demo check</b><span>Checks the demo TF2 records about once a minute, with demo-analysis.</span></div><span class="sw" data-k="check" role="switch" tabindex="0"></span><span class="swtxt"></span></div></div>
           <div class="pnl"><div class="set"><div class="st"><b>Keep only demos with a cheater</b><span>Deletes a finished match's demo if nothing was found.</span></div><span class="sw" data-k="keep" role="switch" tabindex="0"></span><span class="swtxt"></span></div></div>
         </div>
         <div class="row">
           <div class="pnl"><div class="set"><div class="st"><b>Record only with a flagged player</b><span class="rabout"></span></div><span class="sw" data-k="record" role="switch" tabindex="0"></span><span class="swtxt"></span></div></div>
         </div>
-        <div class="lastchk"><span class="lab">Cheat check</span><b class="cstate"></b><span class="crec"></span><span class="csp"></span><button class="btn sm" data-a="cheat_check_now">Check now</button></div>
+        <div class="lastchk">
+          <span class="cstate"></span><span class="crec"></span><span class="clast"></span>
+          <button class="btn sm ghost cmore" aria-expanded="false"></button>
+          <span class="csp"></span><button class="btn sm" data-a="cheat_check_now">Check now</button>
+        </div>
         <div class="chklog"></div>
         <div class="found brk">
           <span class="tag">FOUND</span><span class="who"></span><span class="what"></span>
           <span class="sp"></span>
-          <button class="btn dng sm" data-a="cheat_votekick">Votekick</button>
-          <button class="btn sm" data-a="cheat_copy">Copy</button>
-          <button class="btn sm" data-a="cheat_export" title="A folder next to the demos with the demo, its detections and a report, for the picked player">Export evidence</button>
-          <button class="btn sm" data-a="cheat_open">Open&hellip;</button>
-          <button class="btn sm ghost" data-a="cheat_open_folder">Open demos folder</button>
+          <div class="fbtns">
+          <button class="btn sm kick" data-a="cheat_votekick">${ICON.kick}Votekick</button>
+          <div class="xport">
+            <button class="btn sm xbtn" aria-haspopup="menu" aria-expanded="false">${ICON.export}Export${ICON.chevron}</button>
+            <div class="xmenu" role="menu" hidden>${EXPORTS.map(([a, label, about]) =>
+              `<button role="menuitem" data-x="${a}" title="${esc(about)}">${esc(label)}</button>`).join("")}</div>
+          </div>
+          </div>
         </div>
         <div class="summrow">
-          <div class="summ"></div>
+          <div class="pnl ftable"></div>
           <div class="pnl meanbox"><div class="pnl-h"><span class="lab">What these mean</span></div><div class="means"></div></div>
         </div>
         <div class="cols3">
           <div><div class="pnl-h"><span class="lab">Players</span></div><div class="dplayers"></div></div>
-          <div><div class="pnl-h"><span class="lab">Detections</span><span class="num" style="margin-left:auto;font-size:11px;color:var(--tx3)">tick : algorithm</span></div><div class="ddets"></div></div>
+          <div><div class="pnl-h"><span class="lab">Detections</span><span class="dhint">tick : check</span></div><div class="ddets"></div></div>
           <div><div class="pnl-h"><span class="lab">Details</span></div><div class="ddetails"></div></div>
         </div>
       </div>`;
@@ -108,6 +144,26 @@
     bindSwitch($(sec, '.sw[data-k="check"]'), "cheat_toggle_check");
     bindSwitch($(sec, '.sw[data-k="keep"]'), "cheat_toggle_keep");
     bindSwitch($(sec, '.sw[data-k="record"]'), "cheat_toggle_record");
+    // Export menu: opens under its button, closes on a pick, a click elsewhere or Escape.
+    const xbtn = $(sec, ".xbtn"), xmenu = $(sec, ".xmenu");
+    const openMenu = open => { xmenu.hidden = !open; xbtn.setAttribute("aria-expanded", open ? "true" : "false"); };
+    xbtn.onclick = e => { e.stopPropagation(); openMenu(xmenu.hidden); };
+    xmenu.onclick = e => {
+      const item = e.target.closest("[data-x]");
+      if (!item) return;
+      openMenu(false);
+      LS.act(item.dataset.x);
+    };
+    document.addEventListener("click", e => { if (!e.target.closest(".xport")) openMenu(false); });
+    document.addEventListener("keydown", e => { if (e.key === "Escape") openMenu(false); });
+    // The earlier checks: behind "+N earlier".
+    const more = $(sec, ".cmore"), log = $(sec, ".chklog");
+    log.hidden = true;
+    more.onclick = () => {
+      log.hidden = !log.hidden;
+      more.textContent = log.hidden ? `Show ${more.dataset.n} earlier` : "Hide earlier";
+      more.setAttribute("aria-expanded", log.hidden ? "false" : "true");
+    };
     const players = $(sec, ".dplayers"), dets = $(sec, ".ddets"), details = $(sec, ".ddetails");
     players.onclick = e => {
       const li = e.target.closest(".li");
@@ -134,22 +190,40 @@
     setSwitch($(sec, '.sw[data-k="keep"]'), s.keep);
     setSwitch($(sec, '.sw[data-k="record"]'), s.record_only);
     $(sec, ".rabout").textContent = s.record_about;
+    // The status line: only what the switches above don't already say.
+    const st = $(sec, ".cstate");
+    st.textContent = s.state;
+    st.hidden = !s.state;
     const rec = $(sec, ".crec");
-    rec.textContent = s.record;
-    rec.classList.toggle("on", s.recording);
-    $(sec, ".cstate").textContent = s.state.replace(/^Cheat check: /, "");
-    put($(sec, ".chklog"), logHTML(s.log));
+    rec.hidden = !s.recording;
+    if (s.recording) {
+      rec.textContent = s.recording.text;
+      rec.classList.toggle("on", s.recording.on);
+    }
+    put($(sec, ".clast"), lastHTML(s.log));
+    const more = $(sec, ".cmore"), log = $(sec, ".chklog");
+    more.dataset.n = s.log.length - 1;
+    more.hidden = s.log.length < 2;
+    if (more.hidden) log.hidden = true;
+    more.textContent = log.hidden ? `Show ${more.dataset.n} earlier` : "Hide earlier";
+    put(log, s.log.slice(1).map(e => `<div class="cl">${checkHTML(e)}</div>`).join(""));
     const found = $(sec, ".found");
     found.classList.toggle("none", !s.found);
+    found.classList.toggle("strong", !!(s.found && s.found.strong));  // red only for a STRONG find
     $(sec, ".found .tag").textContent = s.found ? "FOUND" : "NOTHING FOUND";
     $(sec, ".found .who").textContent = s.found ? s.found.who : "";
-    $(sec, ".found .what").textContent = s.found ? s.found.what : "No player with detections yet.";
-    put($(sec, ".summ"), summaryHTML(s.summary));
+    put($(sec, ".found .what"), s.found ? numHTML(s.found.what) : "No player with detections yet.");
+    // Votekick: greyed with the reason in its hover when the vote can't work (a click still says why).
+    const kick = $(sec, ".kick");
+    kick.classList.toggle("no", !s.kick.ok);
+    kick.setAttribute("aria-disabled", s.kick.ok ? "false" : "true");
+    kick.title = s.kick.why;
+    put($(sec, ".ftable"), tableHTML(s.table));
     put($(sec, ".means"), meaningHTML(s.meaning));
     put($(sec, ".dplayers"), s.players.length ? s.players.map(p =>
       `<div class="li${p.sid === s.picked ? " sel" : ""}" data-sid="${esc(p.sid)}" title="Double-click: Steam profile">` +
       `<span class="mark ${p.strong ? "m-red" : "m-yel"}" style="height:14px"></span><span class="nm">${esc(p.name)}</span>` +
-      `<span class="c${p.strong ? " r" : ""}">${p.count}</span></div>`).join("")
+      `<span class="c num${p.strong ? " r" : ""}">${p.count}</span></div>`).join("")
       : `<div class="empty">Nothing found yet.</div>`);
     put($(sec, ".ddets"), s.dets.map(d =>
       `<div class="det${d.key === s.det ? " sel" : ""}" data-key="${esc(d.key)}"><span class="t">${d.tick}</span>` +
@@ -157,13 +231,13 @@
       || `<div class="empty">${s.players.length ? "" : "Click a player, then a detection."}</div>`);
     put($(sec, ".ddetails"), s.details
       ? `<div class="json">${jsonHTML(s.details)}</div>` +
-        (s.goto ? `<div class="cmdline"><span>${esc(s.goto)}</span><button class="btn sm">Copy</button></div>` : "")
+        (s.goto ? `<div class="cmdline"><span>${esc(s.goto)}</span><button class="btn sm" title="Copies this TF2 console command">Copy command</button></div>` : "")
       : `<div class="empty">Click a player, then a detection.</div>`);
   });
 
   // ---------------------------------------------------------------- Duels
 
-  const CHEVRON = `<svg viewBox="0 0 12 12"><path d="M3 4.5l3 3 3-3"/></svg>`;
+  const CHEVRON = ICON.chevron;
 
   function commandHTML(cmd) {  // "!duel <name>, <name>": the <...> parts dimmed, as on the Help page
     return esc(cmd).replace(/&lt;[^&]*&gt;/g, s => `<em>${s}</em>`);
@@ -172,19 +246,19 @@
   function duelHTML(d) {
     if (d.text) return `<div class="dueltxt">${esc(d.text)}</div>`;
     return `<div class="duel">${d.label ? `<span class="dlab lab">${esc(d.label)}</span>` : ""}` +
-      `<span class="p ${d.ta}">${esc(d.a)}</span><span class="sc">${esc(d.sa)}<em>-</em>${esc(d.sb)}</span>` +
+      `<span class="p ${d.ta}">${esc(d.a)}</span><span class="sc num">${esc(d.sa)}<em>-</em>${esc(d.sb)}</span>` +
       `<span class="p ${d.tb} rt">${esc(d.b)}</span></div>`;
   }
 
   let duelsBuilt = false;
   function buildDuels(sec) {
     sec.innerHTML = `
-      <div class="ph"><h1>Duels</h1><span class="crumb"></span></div>
+      <div class="ph"><h1>HoovyGPT</h1><span class="crumb">// AI chat bot + duels</span></div>
       <div class="pad">
         <div class="bigsw brk"><span class="sw" role="switch" tabindex="0"></span><span class="swtxt"></span><div><b class="dtitle"></b><span class="dabout"></span></div></div>
         <div class="row">
           <div class="pnl" style="flex:1.3">
-            <div class="pnl-h"><span class="lab">Running now</span><span class="num dcount" style="font-size:11px;color:var(--tx3)"></span><span style="margin-left:auto"></span><button class="btn dng sm" data-a="duels_stop">Stop all duels</button></div>
+            <div class="pnl-h"><span class="lab">Running now</span><span class="dcount"></span><span style="margin-left:auto"></span><button class="btn sm ghost dstop" data-a="duels_stop">Stop all duels</button></div>
             <div class="dlist"></div>
           </div>
           <div class="pnl hv dmodel">
@@ -196,15 +270,15 @@
           </div>
         </div>
         <div class="pnl hv">
-          <div class="pnl-h"><span class="lab">Who can mute Heavy</span></div>
-          <div class="pnl-b" style="display:flex;gap:16px;align-items:center">
-            <div class="seg" style="width:420px"><button data-lock="off">Anyone</button><button data-lock="on">Stays on</button><button data-lock="muted">Stays muted</button></div>
-            <span style="color:var(--tx3);font-size:12px">Do !badbot and !goodbot work for others?</span>
+          <div class="pnl-h"><span class="lab dlockq"></span></div>
+          <div class="pnl-b dlock">
+            <div class="seg"></div>
+            <span class="dlockhint"></span>
           </div>
         </div>
-        <div class="pnl hv">
-          <div class="pnl-h"><span class="lab">Tokens today</span><span style="margin-left:auto"></span><button class="btn sm dtokwin" data-a="duels_token_window"></button></div>
-          <div class="dtokens"></div>
+        <div class="pnl hv dtokpnl">
+          <div class="pnl-h"><span class="lab">Tokens today</span><span style="margin-left:auto"></span><button class="btn sm ghost dtokbtn" aria-expanded="false">Show details</button></div>
+          <div class="dtokens" hidden></div>
         </div>
         <div class="pnl hc">
           <div class="pnl-h"><span class="lab">What players can type in chat</span></div>
@@ -213,10 +287,23 @@
       </div>`;
     sec.querySelectorAll("[data-a]").forEach(b => b.onclick = () => LS.act(b.dataset.a));
     bindSwitch($(sec, ".bigsw .sw"), "duels_toggle");
-    sec.querySelectorAll(".seg button").forEach(b => b.onclick = () => {
+    // The !badbot choice: its buttons come from the state (named by what each does).
+    $(sec, ".seg").onclick = e => {
+      const b = e.target.closest("button[data-lock]");
+      if (!b) return;
       sec.querySelectorAll(".seg button").forEach(x => x.classList.toggle("on", x === b));
+      $(sec, ".dlockhint").textContent = b.title;
       LS.act("duels_lock", b.dataset.lock);
-    });
+    };
+    // Tokens today: closed by default, its table only behind Details.
+    const tokbtn = $(sec, ".dtokbtn"), tokens = $(sec, ".dtokens");
+    tokbtn.onclick = () => {
+      tokens.hidden = !tokens.hidden;
+      tokbtn.setAttribute("aria-expanded", tokens.hidden ? "false" : "true");
+      tokbtn.textContent = tokens.hidden ? "Show details" : "Hide details";
+      $(sec, ".dtokpnl").classList.toggle("shut", tokens.hidden);
+    };
+    $(sec, ".dtokpnl").classList.add("shut");
     const sel = $(sec, ".msel");
     sel.onchange = () => { LS.act("duels_model", sel.value); sel.blur(); };
     duelsBuilt = true;
@@ -226,12 +313,13 @@
     const sec = document.getElementById("p-duels");
     if (!sec || s.error) return;
     if (!duelsBuilt) buildDuels(sec);
-    $(sec, ".crumb").textContent = s.heavy ? "// HoovyGPT + 1v1 scoring from chat" : "// 1v1 scoring from chat";
     setSwitch($(sec, ".bigsw .sw"), s.on, s.text);
     $(sec, ".bigsw .swtxt").classList.toggle("wide", s.text.length > 3);
     $(sec, ".dtitle").textContent = s.title;
     $(sec, ".dabout").textContent = s.about;
     $(sec, ".dcount").textContent = s.duels.length ? `${s.duels.length} duel${s.duels.length === 1 ? "" : "s"}` : "";
+    // Stop all duels posts in chat: its hover shows the exact lines first.
+    $(sec, ".dstop").title = s.stop_preview.length ? "Posts in chat:\n" + s.stop_preview.join("\n") : "No duels running";
     put($(sec, ".dlist"), s.duels.length ? s.duels.map(duelHTML).join("") : `<div class="dueltxt muted">No duels running.</div>`);
     put($(sec, ".dcmds"), s.commands.map(([c, about]) => `<div class="cmd"><code>${commandHTML(c)}</code><span>${esc(about)}</span></div>`).join(""));
     sec.querySelectorAll(".hv").forEach(el => el.style.display = s.heavy ? "" : "none");
@@ -247,15 +335,19 @@
     }
     put($(sec, ".mmeter"), m.limit && m.left !== null
       ? `<div class="meter"><i style="width:${Math.max(0, Math.min(100, m.left / m.limit * 100))}%"></i></div>` +
-        `<div class="num" style="font-size:11px;color:var(--tx3);margin-top:6px">${m.left} / ${m.limit} free answers left today</div>`
-      : `<div class="num" style="font-size:11px;color:var(--tx3)">The one asked first. Click to pick another.</div>`);
+        `<div class="mnote">${numHTML(`${m.left} / ${m.limit} free answers left today`)}</div>`
+      : `<div class="mnote">The one asked first. Click to pick another.</div>`);
+    $(sec, ".dlockq").textContent = s.lock_question;
+    put($(sec, ".seg"), s.lock_options.map(([v, label, effect]) =>
+      `<button data-lock="${esc(v)}" title="${esc(effect)}">${esc(label)}</button>`).join(""));
     sec.querySelectorAll(".seg button").forEach(b => b.classList.toggle("on", b.dataset.lock === s.lock));
-    $(sec, ".dtokwin").textContent = s.token_window ? "Close the tokens window" : "Open in its own window";
+    const picked = s.lock_options.find(o => o[0] === s.lock);
+    $(sec, ".dlockhint").textContent = picked ? picked[2] : "";
     const t = s.tokens;
     put($(sec, ".dtokens"), `<table class="dt"><thead><tr>${t.columns.map((c, i) =>
         `<th${i ? ' class="r"' : ""}>${esc(c)}</th>`).join("")}</tr></thead><tbody>` +
       t.rows.map(([first, ...cells]) => `<tr${first ? ' class="first"' : ""}>` + cells.map((c, i) =>
         `<td${i ? ' class="r"' : ""}>${esc(c)}</td>`).join("") + `</tr>`).join("") +
-      `</tbody></table><div class="tnote num">${esc(t.note)}</div>`);
+      `</tbody></table><div class="tnote">${esc(t.note)}</div>`);
   });
 })();

@@ -1,4 +1,4 @@
-"""Everything the scanner says in TF2's chat, apart from duels and HoovyGPT's replies: the spam limit
+"""Everything the toolbox says in TF2's chat, apart from duels and HoovyGPT's replies: the spam limit
 (ChatLimit), the queue that sends lines one by one, and the lines themselves (EZ mode, the announcer,
 player stats and summaries). ChatMixin is the part of the App that does this."""
 
@@ -10,7 +10,7 @@ import time
 import unicodedata
 from collections import Counter, deque
 
-from settings import HERE, save_config, ON_BG, ON_FG, MUTED, BG, BORDER
+from settings import HERE, save_config
 from tf2_translator import language_code, translate_any
 from game_log import PENDING
 from player_flags import age_in_words, crit_text, fmt_age, fmt_hours, lobby_friends, profile_flags
@@ -517,31 +517,14 @@ class ChatMixin:
     def toggle_country_beef(self):
         self.cfg["country_beef_auto"] = not self.cfg["country_beef_auto"]
         save_config(self.cfg)
-        self.update_beef_button()
-
-    def update_beef_button(self):
-        a, b = self.cfg["country_beef"]
-        on = self.cfg["country_beef_auto"]
-        self.beef_button.set_title(f"Country kill score: {COUNTRY_NAMES.get(a, a)} vs {COUNTRY_NAMES.get(b, b)}")
-        self.beef_button.show("ON" if on else "OFF", on)
 
     def toggle_ez_mode(self):
         self.cfg["ez_mode"] = not self.cfg["ez_mode"]
         save_config(self.cfg)
-        self.update_ez_button()
-
-    def update_ez_button(self):
-        on = self.cfg["ez_mode"]
-        self.ez_button.show("ON" if on else "OFF", on)
 
     def toggle_translate_to_chat(self):
         self.cfg["translate_to_chat"] = not self.cfg["translate_to_chat"]
         save_config(self.cfg)
-        self.update_translate_button()
-
-    def update_translate_button(self):
-        on = self.cfg["translate_to_chat"]
-        self.translate_button.show("ON" if on else "OFF", on)
 
     def translate_command(self, name, msg, team):
         """Answers "!speak <language> <message>" typed by anyone (you too): says the message in
@@ -602,13 +585,6 @@ class ChatMixin:
         """The !who pill on the Chat page."""
         self.cfg["who_command"] = not self.cfg["who_command"]
         save_config(self.cfg)
-        self.update_who_button()
-
-    def update_who_button(self):
-        """The !who pill on the Chat page: blue answers, gray doesn't (like the other commands)."""
-        on = self.cfg["who_command"]
-        self.who_button.configure(fg=ON_FG if on else MUTED)
-        self.who_button.set_fill(ON_BG if on else BG, ON_BG if on else BORDER)
 
     def toggle_speak_mute(self):
         """Mute !speak / Unmute !speak in a player's panel: their !speak is ignored from now on,
@@ -623,7 +599,6 @@ class ChatMixin:
             self.announce_queue = deque(e for e in self.announce_queue if not e[2].startswith(f"{p.name} said: "))
         save_config(self.cfg)
         self.notify(f"{p.name}'s !speak is {'muted' if p.sid in muted else 'back on'}")
-        self.update_speak_mutes_button()
 
     def unmute_all_speak(self):
         """The !speak: muted players card on the Chat page: everyone can use !speak again."""
@@ -631,12 +606,6 @@ class ChatMixin:
         self.cfg["speak_muted"] = []
         save_config(self.cfg)
         self.notify(f"Unmuted {count} player{'s' * (count != 1)}" if count else "Nobody is muted")
-        self.update_speak_mutes_button()
-        self.actions_state = None  # the panel's button says Mute again
-
-    def update_speak_mutes_button(self):
-        count = len(self.cfg["speak_muted"])
-        self.speak_mutes_button.show(f"{count} muted" if count else "nobody", bool(count))
 
     def toggle_translate_command(self):
         """The !speak pill on the Chat page: !speak stops working until it's clicked again."""
@@ -646,13 +615,6 @@ class ChatMixin:
         if not on:  # translations still waiting to be said are dropped too
             self.announce_queue = deque(e for e in self.announce_queue if " said: " not in e[2])
         self.notify(f"!speak {'on' if on else 'off'}")
-        self.update_speak_button()
-
-    def update_speak_button(self):
-        """The !speak pill on the Chat page: blue answers, gray doesn't (like the other commands)."""
-        on = self.cfg["translate_command"]
-        self.speak_button.configure(fg=ON_FG if on else MUTED)
-        self.speak_button.set_fill(ON_BG if on else BG, ON_BG if on else BORDER)
 
     def translated(self, entry):
         """A new line in the translator: said in chat while Translate to chat is on.
@@ -665,13 +627,8 @@ class ChatMixin:
     def toggle_announcer(self):
         self.cfg["announcer"] = not self.cfg["announcer"]
         save_config(self.cfg)
-        self.update_announcer_button()
         if self.cfg["announcer"]:
             self.queue_chat(ANNOUNCER_ANNOUNCEMENT)
-
-    def update_announcer_button(self):
-        on = self.cfg["announcer"]
-        self.announcer_button.show("ON" if on else "OFF", on)
 
     # --- actions -----------------------------------------------------------------------
 
@@ -697,7 +654,8 @@ class ChatMixin:
     def kick_command(self, name, msg, team):
         """"!kick <name>" typed by you (nobody else): starts a vote to kick that player for cheating.
         Part of a name works, like !duel; you can name yourself too. Votes only work on your own team. What went wrong shows
-        on your screen only, never in chat."""
+        on your screen only (over the game: you typed it there), never in chat. A vote that started
+        only says so in the title bar, like the Votekick button."""
         me = self.players.get(self.me)
         if not (m := KICK_RE.match(msg)) or not me or name != me.name:
             return
@@ -708,7 +666,6 @@ class ChatMixin:
             self.toast.show(f"!kick: {p.name} is on the other team (votes only work on your own team)", 1)
         else:
             self.votekick_player(p)
-            self.toast.show(f"Vote to kick {p.name} for cheating started", 0)
 
     def chat_text(self, p, country=False):
         """The Say in chat line for one player: their flags and stats, short enough for TF2's chat.
@@ -780,8 +737,17 @@ class ChatMixin:
         return f"{name}{tag} | {' | '.join(parts)}"
 
     def say_lobby_summary(self):
-        """Posts this match's leaderboards in one chat message, dropping the least
-        important entries until it fits. All from TF2's scoreboard and the kill feed."""
+        """The Lobby summary button: posts lobby_summary_text, or says why there's nothing yet."""
+        text = self.lobby_summary_text()
+        if not text:
+            self.notify("No scores yet (needs -g15 and some kills)")
+            return
+        self.post(text)
+
+    def lobby_summary_text(self):
+        """This match's leaderboards (the Match highlights line) in one chat message, dropping the
+        least important entries until it fits, or None while nothing is known. All from TF2's
+        scoreboard and the kill feed."""
         players = list(self.players.values())
         name = {p.sid: p.name for p in players}
 
@@ -817,31 +783,18 @@ class ChatMixin:
             leader(hs, lambda n, v: f"best sniper: {n} ({round(100 * v)}% hs)"),
         ) if p]
         if not parts:
-            self.notify("No scores yet (needs -g15 and some kills)")
-            return
+            return None
         while not fits(" | ".join(parts), CHAT_LIMIT) and len(parts) > 1:
             parts.pop()
-        self.post(" | ".join(parts))
+        return " | ".join(parts)
 
     def say_kill_race(self):
-        """Posts each team's total kills and its top fragger, from TF2's scoreboard."""
-        teams = {}  # RED/BLU -> [total kills, top player's name, their kills]
-        for p in self.players.values():
-            team, kills = self.team_color(p), self.board_int(p.sid, "m_iScore")
-            if team and kills is not None:
-                t = teams.setdefault(team, [0, None, 0])
-                t[0] += kills
-                if kills > t[2]:
-                    t[1:] = [p.name, kills]
-        if not teams:
+        """The Players page's Kill race button: posts the same line as !top (info_commands.top_line)."""
+        line = self.top_line(unknown=None)
+        if not line:
             self.notify("No scores yet (needs -g15)")
             return
-        red, blu = teams.get("RED", [0, None, 0]), teams.get("BLU", [0, None, 0])
-        parts = [f"Kills: RED {red[0]} - {blu[0]} BLU"]
-        parts += [f"{team}'s top: {t[1]} ({t[2]})" for team, t in (("RED", red), ("BLU", blu)) if t[1]]
-        while not fits(" | ".join(parts), CHAT_LIMIT) and len(parts) > 1:
-            parts.pop()
-        self.post(" | ".join(parts))
+        self.post(line)
 
     def say_translation(self, entry=None):
         """Says a translated chat message (the newest one by default) for everyone,
@@ -886,12 +839,19 @@ class ChatMixin:
         p = self.players.get(self.selected)
         if not p:
             return
+        text, reason = self.friends_text(p)
+        if text:
+            self.post(text)
+        else:
+            self.notify(reason)
+
+    def friends_text(self, p):
+        """(the chat line naming who in this lobby p is friends with, None), or (None, why not)."""
         friends = lobby_friends(p, list(self.players.values()))
         if not friends:
             loading = any(q.friends == PENDING for q in self.players.values())
-            self.notify("Friend lists are still loading" if loading
-                        else "No friends of theirs in this lobby (or their list is private)")
-            return
+            return None, ("Friend lists are still loading" if loading
+                          else "No friends of theirs in this lobby (or their list is private)")
 
         def tagged(q):
             team = self.team_color(q)
@@ -903,7 +863,7 @@ class ChatMixin:
             text = f"{tagged(p)} is friends with {', '.join(tagged(q) for q in friends[:shown])}{more}"
             if fits(text, CHAT_LIMIT):
                 break
-        self.post(text)
+        return text, None
 
     def post(self, text):
         """Says text in chat over RCON, or copies it when RCON isn't connected."""

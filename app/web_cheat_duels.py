@@ -39,15 +39,66 @@ def _det_key(det):
     return f"{det['tick']}|{det['algorithm']}"
 
 
-def short_paths(summary):
-    """The summary without the folders in its "Saved:" line: only the file's name (no user names on the page)."""
-    return "\n".join(f"Saved: {os.path.basename(line[7:])}" if line.startswith("Saved: ") else line
-                     for line in summary.split("\n"))
+DEFAULT_STATE = "checks about once a minute"  # App.demo_state between checks: the switch already says it
+LOG_RE = re.compile(r"\s{3,}")
+
+
+def log_entries(app):
+    """App.demo_log (newest first) as {"time", "demo", "read", "found", "after"}: the parts of each line."""
+    entries = []
+    for line in app.demo_log:
+        parts = LOG_RE.split(line)
+        time_, demo, read, found = (parts + ["", "", "", ""])[:4]
+        after = parts[4].strip("()") if len(parts) > 4 else ""
+        entries.append({"time": time_, "demo": demo, "read": read, "found": found, "after": after})
+    return entries
+
+
+def found_short(found):
+    """A log line's "found A, B" as "found 2 players" (the names are in the table), "nothing found" as is."""
+    if not found.startswith("found "):
+        return found
+    n = len(found[6:].split(", "))
+    return f"found {n} player{'s' * (n != 1)}"
+
+
+def recording_state(app):
+    """The live recording, shortly: ("on", text) while TF2 records for a flagged player, ("off", text) while
+    it waits for one, None when the switches above already say it all (check off, or every match)."""
+    if not app.cfg["demo_check"] or not app.cfg["record_only_flagged"]:
+        return None
+    return ("on", "Recording: flagged player in the match") if app.recording else ("off", "Not recording")
+
+
+CANT_KICK = "Votes only work on your own team"  # the Votekick hover on a player on the other team
+
+
+def kick_state(app, picked, names):
+    """The Votekick button for the player picked in the Players list: {"ok", "why"}, why = its hover.
+    It greys out (and says why) when the vote can't work, as votekick_player would refuse it."""
+    p = app.players.get(picked) if picked is not None else None
+    if not p:
+        return {"ok": False, "why": "Pick a player who's still in the server"}
+    if app.team_of(p) == "ENEMY":
+        return {"ok": False, "why": CANT_KICK}
+    return {"ok": True, "why": f"Starts a vote to kick {names.get(picked, p.name)}"}
+
+
+def demo_table(app):
+    """What was found in the checked demo: map, length, file name and one row per player and check."""
+    from demo_check import duration_text, found_rows
+    view = app.demo_view
+    if not view:
+        return None
+    result = view["result"]
+    rows = [dict(r, sid=str(r["sid"]), you=r["sid"] == app.me) for r in found_rows(result, view["names"])]
+    return {"map": result.get("map", "?"), "duration": duration_text(result.get("duration", 0)),
+            "file": os.path.basename(view["demo"]), "rows": rows}
 
 
 @page("Cheat check")
 def cheat_state(app):
-    from demo_check import check_order, count_checks, detection_details
+    from demo_check import count_checks, detection_details
     from screens import RECORD_ONLY_FLAGGED_ABOUT
     view = app.demo_view
     detections = view["result"].get("detections", []) if view else []
@@ -70,27 +121,36 @@ def cheat_state(app):
         text = detection_details(det, names, view["user_names"], view.get("pings"))
         details, _, rest = text.partition("\n\nIn TF2's console")
         goto = rest.strip().splitlines()[-1] if rest else ""
-    # The FOUND bar: who was found (not you), the most detections first, and what on the first.
+    # The FOUND bar: who was found (not you), the most detections first; what exactly is in the table.
     found = [sid for sid in sids if sid != app.me]
     bar = None
     if found:
         top = counts[found[0]]
-        what = [f"{n} {c.removeprefix('nocrex/')} ({'strong' if _strength(c) else 'weak'})"
-                for c, n in sorted(top.items(), key=lambda kv: check_order(*kv))]
+        total, strong = sum(top.values()), sum(n for c, n in top.items() if _strength(c))
+        what = f"{total} detection{'s' * (total != 1)}" + (f" ({strong} strong)" if strong else " (all weak)")
         if len(found) > 1:
-            what.append(f"+{len(found) - 1} more player{'s' * (len(found) > 2)}")
-        bar = {"who": names.get(found[0], str(found[0])), "what": " · ".join(what)}
+            what += f" · +{len(found) - 1} more player{'s' * (len(found) > 2)}"
+        # red only when something an unmodified game can't do was found; weak finds stay orange
+        bar = {"who": names.get(found[0], str(found[0])), "what": what, "strong": bool(strong)}
+    log = log_entries(app)
+    shown = os.path.basename(view["demo"]) if view else ""
+    for entry in log:
+        entry["found"] = found_short(entry["found"])
+        if entry["demo"] == shown:
+            entry["demo"] = ""  # the table below names it
+    rec = recording_state(app)
     return {
         "check": bool(app.cfg["demo_check"]), "keep": bool(app.cfg["demo_keep_only_cheaters"]),
         "record_only": bool(app.cfg["record_only_flagged"]), "record_about": RECORD_ONLY_FLAGGED_ABOUT,
-        "recording": app.recording, "record": app.record_text(),
-        "state": f"Cheat check: {app.demo_state}",
-        "log": list(app.demo_log),
+        "state": "" if app.demo_state in (DEFAULT_STATE, "off") else app.demo_state,
+        "recording": rec and {"on": rec[0] == "on", "text": rec[1]},
+        "log": log,
         "found": bar,
-        "summary": short_paths(app.demo_summary) or "Nothing found yet.",
+        "table": demo_table(app),
         "meaning": meaning_entries(view["result"] if view else None),
         "players": players, "picked": str(picked) if picked is not None else None,
         "dets": det_list, "det": det_key, "details": details, "goto": goto,
+        "kick": kick_state(app, picked, names),
     }
 
 
@@ -116,6 +176,12 @@ def _cheat_check_now(app):
 
 @action("cheat_votekick")
 def _cheat_votekick(app):
+    """For the player the page shows picked (the first one until another is clicked), as the Tk list."""
+    view = app.demo_view
+    if view and getattr(app, "demo_picked_sid", None) is None:
+        from demo_check import count_checks
+        counts = count_checks(view["result"].get("detections", []))
+        app.demo_picked_sid = _picked_player(app, sorted(counts, key=lambda sid: -sum(counts[sid].values())))
     app.votekick_demo_player()
 
 
@@ -170,7 +236,16 @@ def _cheat_copy_goto(app):
 # --- Duels -----------------------------------------------------------------------------------------
 
 DUEL_RE = re.compile(r"^(?P<a>.+) (?P<sa>\d+)-(?P<sb>\d+) (?P<b>.+)$")
-LOCKS = ("off", "on", "muted")  # the Who can mute Heavy choices: Anyone, Stays on, Stays muted
+LOCKS = ("off", "on", "muted")  # App.cfg["ai_lock"] (None = "off"), see ai.py ai_chat / refuse_ai_command
+# The !badbot / !goodbot choice, named by what it does (ai.py): "off" lets anyone in chat mute
+# (!badbot) or wake (!goodbot) Heavy; "on" and "muted" let only your own commands through (others
+# get a no from Heavy) and keep Heavy talking or quiet until you change it.
+LOCK_QUESTION = "Who can use !badbot and !goodbot"
+LOCK_OPTIONS = (
+    ("off", "Everyone", "Anyone in chat can mute Heavy with !badbot and wake him with !goodbot."),
+    ("on", "Only you, Heavy talks", "Heavy keeps talking: others get a no from Heavy. Your own !badbot still mutes him."),
+    ("muted", "Only you, Heavy quiet", "Heavy stays quiet: others get a no from Heavy. Your own !goodbot still wakes him."),
+)
 
 
 def _duel_side(app, name):
@@ -200,6 +275,26 @@ def duel_rows(app):
     return rows
 
 
+def stop_preview(app):
+    """The exact lines Stop all duels would post in chat (what "!duel stopall" says), for its hover:
+    App.stop_all_duels run with its chat lines caught instead of sent. [] when it would post nothing."""
+    if not app.chat_duels or app.me not in app.players:
+        return []
+    lines, duels, had = [], app.chat_duels, "announce_chat" in vars(app)
+    old = vars(app).get("announce_chat")
+    app.announce_chat = lambda text, command="say": lines.append(text)
+    try:
+        app.chat_duels = list(duels)
+        app.stop_all_duels(app.me)
+    finally:
+        app.chat_duels = duels
+        if had:
+            app.announce_chat = old
+        else:
+            del app.announce_chat
+    return lines
+
+
 @page("Duels")
 def duels_state(app):
     from ai import TOKEN_COLUMNS, TOKEN_NOTE, ai_quota, model_choices, token_rows
@@ -213,6 +308,7 @@ def duels_state(app):
         "text": "OFF" if not app.ai_on else "MUTED (!badbot)" if app.ai_muted else "ON",
         "duels": duel_rows(app),
         "commands": [list(c) for c in DUEL_COMMANDS],
+        "stop_preview": stop_preview(app),
     }
     if heavy:
         name, model = app.model_shown()
@@ -221,9 +317,9 @@ def duels_state(app):
             "model": {"value": app.cfg["ai_model"], "name": name, "label": ai_quota.label(model),
                       "left": left, "limit": limit, "choices": [list(c) for c in model_choices()]},
             "lock": app.cfg["ai_lock"] or "off",
+            "lock_question": LOCK_QUESTION, "lock_options": [list(o) for o in LOCK_OPTIONS],
             "tokens": {"columns": list(TOKEN_COLUMNS), "rows": [list(r) for r in token_rows(app.ai_models()[0][1])],
                        "note": TOKEN_NOTE},
-            "token_window": bool(app.cfg["token_panel"]),
         })
     return state
 
@@ -251,7 +347,3 @@ def _duels_lock(app, lock):
     if lock in LOCKS:
         app.pick_lock(None if lock == "off" else lock)
 
-
-@action("duels_token_window")
-def _duels_token_window(app):
-    app.toggle_token_panel()

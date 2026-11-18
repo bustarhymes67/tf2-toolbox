@@ -1,27 +1,74 @@
-/* chat_status_help: the Chat, Status and Help pages, beyond the shared styles in index.html */
+/* chat_status_help: the Chat, Status and Help pages, beyond the shared styles in index.html.
+   Visual pass: --f-head for caps headings, --f-num only for numbers, --f-text for the rest;
+   spacing only --g1/--g2/--g3 (8/16/24 px); hovers fade in var(--fade). */
 
 /* Chat: a setting row is the switch; hovering it a second plays what it posts in chat */
-#p-chat .set{cursor:pointer;position:relative}
+#p-chat .set{cursor:pointer;position:relative;gap:var(--g2);padding:var(--g1) var(--g2);min-height:56px}
+#p-chat .set .st b{font-family:var(--f-text);font-weight:600;font-size:13.5px}
+#p-chat .set .st span{font-family:var(--f-text);font-size:12px;line-height:1.5}
+#p-chat .swtxt{font-family:var(--f-head);font-size:11.5px;letter-spacing:.1em;width:32px}
+#p-chat .set .val{font-family:var(--f-text);font-size:12px;color:var(--tx3)}
 #p-chat .set .val.on{color:var(--ac);border-color:var(--ac-m);background:var(--ac-d)}
-#p-chat .cpreview{position:absolute;left:14px;top:calc(100% + 4px);z-index:40;min-width:340px;max-width:calc(100% - 28px);
-  background:var(--bg);border:1px solid var(--ac);padding:6px 10px 8px;cursor:default;
-  box-shadow:0 10px 30px rgba(0,0,0,.6)}
-#p-chat .cpreview .cpl{font-family:var(--f-lab);font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--ac);margin-bottom:4px}
-#p-chat .cpreview .pl{font-family:var(--f-num);font-size:12px;line-height:1.7;white-space:nowrap}
+#p-chat .cpreview{position:absolute;left:var(--g2);top:calc(100% + 4px);z-index:40;min-width:340px;max-width:calc(100% - 32px);
+  background:var(--bg);border:1px solid var(--ac);padding:var(--g1) var(--g2);cursor:default;
+  box-shadow:0 10px 30px rgba(0,0,0,.6);animation:csh-fade var(--fade) ease-out}
+#p-chat .cpreview .cpl{font-family:var(--f-head);font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--ac);margin-bottom:4px}
+#p-chat .cpreview .pl{font-family:var(--f-text);font-size:12.5px;line-height:1.7;white-space:nowrap}
+#p-chat .chatlog{font-family:var(--f-text);font-size:12.5px;line-height:1.8}
+#p-chat .chatlog .a{font-family:var(--f-head);font-size:11px;letter-spacing:.1em;text-transform:uppercase}
 #p-chat .chatlog > div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#p-chat .pnl-h{padding:0 var(--g2);gap:var(--g1)}
+#p-chat .pnl-b{padding:var(--g2)}
+/* Last posts: this session's sent / refused count in its header */
+#p-chat #chat-count{margin-left:auto;font-size:11px;color:var(--tx3)}
+#p-chat #chat-count.bad{color:var(--warn)}
+#p-chat .phint{margin-left:auto;font-family:var(--f-text);font-size:12px;color:var(--tx3)}
 
-/* Status: only the two real chat numbers; a feature's text can be long */
-#p-status .kpis.two{grid-template-columns:repeat(2,1fr)}
-#p-status .conn .st.off{color:var(--tx3)}
-#p-status .conn .st.bd{color:#ff8a83}
-#p-status .chk{height:auto;min-height:34px;padding:8px 14px;align-items:flex-start}
-#p-status .chk .dot{margin-top:5px;flex:none}
-#p-status .chk{white-space:nowrap}
-#p-status .chk .r{white-space:normal;text-align:right;padding-left:16px;line-height:1.5;margin-top:1px}
-#p-status .chk .r.b{color:#ff8a83}
-#p-status #hud-move.pri:hover{color:#03211d}
+/* Chat commands: a pill's hover fades in and says what the command does */
+#p-chat .pills{gap:var(--g1)}
+#p-chat .pill{position:relative;font-family:var(--f-text);font-size:13px;padding:0 var(--g1) 0 var(--g2)}
+#p-chat .pill code,#p-chat .pill > span:first-child{color:inherit}
+#p-chat .pill .o{font-family:var(--f-head);font-size:10.5px;letter-spacing:.08em;transition:background-color var(--fade),border-color var(--fade),color var(--fade)}
+#p-chat .pill:hover{border-color:var(--tx3);color:var(--tx);background:var(--s2)}
+#p-chat .pill.on:hover{border-color:var(--ac);background:var(--ac-d)}
+#p-chat .pill .ptip{position:absolute;left:-1px;top:calc(100% + 6px);z-index:40;width:max-content;max-width:300px;
+  background:var(--bg);border:1px solid var(--ac);padding:var(--g1) var(--g2);box-shadow:0 10px 30px rgba(0,0,0,.6);
+  font-family:var(--f-text);font-size:12px;line-height:1.5;color:var(--tx);white-space:normal;
+  opacity:0;visibility:hidden;pointer-events:none;transition:opacity var(--fade),visibility 0s var(--fade)}
+#p-chat .pill:nth-child(5n) .ptip,#p-chat .pill:nth-child(5n-1) .ptip{left:auto;right:-1px}
+#p-chat .pill:hover .ptip,#p-chat .pill:focus-visible .ptip{opacity:1;visibility:visible;transition:opacity var(--fade) .3s,visibility 0s .3s}
+@keyframes csh-fade{from{opacity:0}to{opacity:1}}
 
-/* Help: plain lines and notes under the commands */
-#p-help .hc .hp{font-size:12.5px;color:var(--tx2);padding:6px 0}
-#p-help .hc .hnote{padding:0 14px 14px;font-size:12px;color:var(--tx3)}
-#p-help .hc .cmd span{white-space:normal}
+/* Status: one compact row of two cards */
+#p-status .srow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:var(--g2);align-items:start}
+#p-status .pnl-h{padding:0 var(--g2)}
+#p-status .sok{margin-left:auto;font-size:11px;color:var(--grn)}
+#p-status .sok.w{color:var(--warn)}
+#p-status .sline{display:grid;grid-template-columns:8px 140px minmax(0,1fr);align-items:baseline;gap:var(--g1) var(--g2);
+  padding:var(--g1) var(--g2);border-bottom:1px solid var(--ln);min-height:40px;align-content:center}
+#p-status .sline:last-child{border-bottom:0}
+#p-status .sline .dot{align-self:center}
+#p-status .sline b{font-family:var(--f-head);font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx)}
+#p-status .sline .st{font-family:var(--f-text);font-size:12.5px;line-height:1.5}
+#p-status .sline .st small{display:block;font-size:11.5px;color:var(--tx3)}
+#p-status .st.ok{color:var(--grn)}
+#p-status .st.wn{color:var(--warn)}
+#p-status .st.off{color:var(--tx3)}
+#p-status .st.bd{color:#ff8a83}
+
+/* Help: a short manual, one scrollable column of sections */
+#p-help{padding-bottom:var(--g3)}
+#p-help .pad{padding:var(--g2) var(--g3) var(--g3)}
+#p-help .hman{max-width:860px;width:100%}
+#p-help .hsec{padding:var(--g2) var(--g3);border-bottom:1px solid var(--ln)}
+#p-help .hsec:last-child{border-bottom:0}
+#p-help .hsec h2{font-family:var(--f-head);font-weight:600;font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--ac);margin-bottom:var(--g1)}
+#p-help .cmd{grid-template-columns:220px 1fr;gap:var(--g2);padding:var(--g1) 0}
+#p-help .cmd code{font-family:var(--f-text);font-weight:600;font-size:13px;color:var(--tx)}
+#p-help .cmd code em{font-weight:400;color:var(--tx3)}
+#p-help .cmd span{font-family:var(--f-text);font-size:13px;color:var(--tx2);white-space:normal;line-height:1.5}
+#p-help .hp{font-family:var(--f-text);font-size:13px;color:var(--tx2);padding:var(--g1) 0;line-height:1.5}
+#p-help .eg{margin-top:var(--g1);padding:var(--g1) var(--g2);font-family:var(--f-text);font-size:12.5px;color:var(--tx3)}
+#p-help .eg b{color:var(--tx);font-weight:600}
+#p-help .hnote{margin-top:var(--g1);font-family:var(--f-text);font-size:12.5px;color:var(--tx3);line-height:1.5}
+#p-help .hlink{margin-top:var(--g1)}

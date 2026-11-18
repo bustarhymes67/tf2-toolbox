@@ -2,18 +2,20 @@
 anti-cheat research does it, and explained clue by clue.
 
 The method:
-- Start from the base rate: about PRIOR (3%) of the players in a casual lobby cheat.
-- Every clue the scanner has is a likelihood ratio (LR): how much more often cheaters show that clue
+- Start from the base rate: about PRIOR (2%, the cheat_prior setting) of the players in a casual
+  lobby cheat.
+- Every clue the toolbox has is a likelihood ratio (LR): how much more often cheaters show that clue
   than honest players. LR 10 = ten times more common among cheaters; LR 0.5 = twice as common among
   honest players. Bayes' rule in log-odds: odds = prior odds x LR1 x LR2 x ...
-- Rates (headshots, random crits) are a statistical test against honest play: the chance that an
-  honest player gets at least this many by luck (a binomial tail), only from a minimum sample. A
-  small sample (3/3 headshots) never moves the odds.
-- Clues that say the same thing count once: two cheater lists are one clue with a bigger LR, an old
-  account and many hours are one "experience" clue.
+- Rates (headshots, random crits) compare how likely the kills are for a cheater and for an honest
+  player whose skill varies (a beta-binomial Bayes factor), only from a minimum sample. A small
+  sample (3/3 headshots) never moves the odds.
+- Clues that say the same thing count once: lists that copy each other are one list, and account
+  age, hours and profile are one "account" group (the strongest in full, the next at half...).
 - "Proven" only for things an unmodified game can't do (the demo check's strong checks).
 
-Every LR below is a careful ESTIMATE with a comment saying why, not a measured accuracy. The score
+Every LR below is a careful ESTIMATE with a comment saying where it comes from (LR_RESEARCH = the
+research note of 2026-11-19 behind these numbers, by section), not a measured accuracy. The score
 only advises; nothing here acts on it (no automatic votekick).
 
 Other modules add clues with register(fn): fn(app, player) -> [Clue]. live_clues.py and
@@ -22,12 +24,15 @@ demo_clues.py are imported at the bottom when they exist."""
 import math
 import re
 import time
+import urllib.parse
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 
 from game_log import PENDING
-from player_flags import CHEAT_BAN_RE, NORMAL_CRIT_RATE, ban_field, binomial_tail
+from player_flags import CHEAT_BAN_RE, ban_field, clean_reason, flag_why, profile_flags
 
-PRIOR = 0.03  # share of cheaters in a casual lobby: a careful estimate (bots and cheaters are common in casual)
+PRIOR = 0.02  # LR_RESEARCH s1: ~0.5 human cheaters per 24-player casual lobby since the 2024 ban wave (low confidence)
+PRIOR_RANGE = (0.001, 0.5)  # the cheat_prior setting is kept inside this (0.01-0.04 is the defensible range)
 
 # The bands, from the probability. "Proven" needs a clue marked proof, whatever the number says.
 BANDS = ("Clean", "Watch", "Suspicious", "Likely", "Proven")
@@ -98,6 +103,15 @@ def impact(clue):
     return abs(math.log(clue.lr)) if clue.lr > 0 else 0.0
 
 
+def prior_of(app):
+    """The start of the score: the cheat_prior setting, PRIOR when it isn't set or isn't a number."""
+    try:
+        value = float(getattr(app, "cfg", {}).get("cheat_prior", PRIOR))
+    except (TypeError, ValueError):
+        return PRIOR
+    return clamp(value, *PRIOR_RANGE) if math.isfinite(value) else PRIOR
+
+
 # --- the clues ---------------------------------------------------------------------------------
 
 CLUE_SOURCES = []
@@ -135,56 +149,115 @@ def sig(n):
     return int(round(n, -digits))
 
 
-def tail_lr(p_tail):
-    """A binomial tail probability as a likelihood ratio, on a smooth curve:
-    LR = 1 / (20 p), kept between 1 and 30. p >= 5% (happens to honest players every few games)
-    moves nothing; 1% gives x5; 1 in 600 or rarer the most, x30. Capped at 30 because the honest
-    rate is itself an estimate and a very good honest player sits in the tail more often than the
-    average one; only the demo's strong checks can prove anything."""
-    if p_tail <= 0:
-        return 30.0
-    return clamp(1 / (20 * p_tail), 1.0, 30.0)
+def fade(lr, years, half_life):
+    """An LR > 1 whose evidence is `years` old: what it adds above x1 halves every half_life years."""
+    if lr <= 1 or not years or years <= 0:
+        return lr
+    return 1 + (lr - 1) * 0.5 ** (years / half_life)
+
+
+def years_since(when, now=None):
+    """Years from a time (unix seconds or milliseconds, or an ISO date) to now; None when unknown."""
+    if isinstance(when, str):
+        text = when.strip()
+        if text.isdigit():
+            when = int(text)
+        else:
+            try:
+                when = datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                return None
+    if not isinstance(when, (int, float)) or isinstance(when, bool) or when <= 0:
+        return None
+    if when > 1e11:  # milliseconds
+        when /= 1000
+    return max(0.0, ((now or time.time()) - when) / (365.25 * 86400))
 
 
 def _flags(app, p):
     return [text for _, text in getattr(app, "flags", {}).get(p.sid, [])]
 
 
-# Cheater lists. One clue however many lists: they copy each other and share reports, so they
-# aren't independent; more lists still mean more separate people checked the player.
-LIST_CHEATER_LR = {1: 20.0, 2: 40.0, 3: 80.0}  # 3 = three or more
-LIST_SUSPICIOUS_LR = {1: 3.0, 2: 5.0}           # listed only as "suspicious" (e.g. SteamRep)
+# Cheater lists. One clue however many lists, counted by independent list FAMILIES: files that copy
+# or collect each other are one judgement, not two (LR_RESEARCH s2, measured on the cached lists).
+LIST_FAMILIES = (  # (part of the list's address or name, family), first match wins
+    ("pazerop/tf2_bot_detector", "pazer"), ("sisterhailey/tf2bd2", "pazer"),  # official list and its fork
+    ("tf2bd official", "pazer"), ("official player blacklist", "pazer"),
+    ("roto.lol", "roto"), ("@trusted", "roto"),
+    ("milenko", "milenko"), ("joekiller", "joekiller"), ("qfoxb", "qfoxb"), ("steamrep", "steamrep"),
+)
+LIST_AGGREGATORS = {"roto", "milenko"}  # LR_RESEARCH s2: roto holds 93% of the official list, milenko is "cumulative"
+LIST_CHEATER_LR = {1: 30.0, 2: 100.0, 3: 200.0}  # LR_RESEARCH s2: independent families (3 = 3+); capped low for hijacked/copied errors
+LIST_ENTRY_HALF_LIFE_Y = 3.0  # LR_RESEARCH s2: lists are mostly dormant (median last seen 2021); stolen accounts get returned
+LIST_SUSPICIOUS_LR = 1.3      # LR_RESEARCH s2: "suspicious" = SteamRep trade-scam bans, not a cheating judgement
+RACIST_LIST_LR = 1.0  # listed only for racism: a list of bad behaviour, not of cheating, so it moves nothing
+CHEATER_ATTRS = {"cheater", "exploiter"}
 
 
-def list_clues(app, p):
+def list_family(name):
+    """The family of a list, from its address or its name: lists that copy each other share one."""
+    low = (name or "").casefold()
+    return next((family for part, family in LIST_FAMILIES if part in low), low)
+
+
+def independent_lists(families):
+    """How many independent judgements these list families are: an aggregator (roto, milenko) only
+    counts when nothing else names them (LR_RESEARCH s2's rule)."""
+    families = set(families)
+    return len(families - LIST_AGGREGATORS) or (1 if families else 0)
+
+
+def list_cheater_lr(n_independent, years=None):
+    """The lists' LR: by independent families, faded by how long ago a list last saw them."""
+    if n_independent <= 0:
+        return 1.0
+    return fade(LIST_CHEATER_LR[min(n_independent, 3)], years, LIST_ENTRY_HALF_LIFE_Y)
+
+
+def list_clues(app, p, now=None):
     listed = getattr(app, "lists", {}).get(p.sid)
     if not listed:
         return []
     attrs = set(listed.get("attributes") or ())
-    n = len(listed.get("sources") or [listed.get("source")])
-    where = "1 cheater list" if n == 1 else f"{n} cheater lists"
-    if attrs & {"cheater", "exploiter"}:
-        return [Clue("lists", LIST_CHEATER_LR[min(n, 3)], f"on {where} ({', '.join(sorted(attrs))})",
-                     "Lists are made from reported cheaters that someone checked; they can be wrong, "
-                     "but agreeing lists make a mistake less likely.", source="lists")]
+    sources = [s for s in (listed.get("sources") or [listed.get("source")]) if s]
+    n = max(1, len(sources))
+    names = ": " + ", ".join(sources[:3]) + (", …" if len(sources) > 3 else "") if sources else ""
+    if attrs & CHEATER_ATTRS:
+        per = listed.get("by_source") or {}
+        cheater = [s for s in sources if not per.get(s) or set(per[s].get("attributes") or ()) & CHEATER_ATTRS]
+        families = {list_family((per.get(s, {}).get("urls") or [s])[0]) for s in cheater}
+        k = independent_lists(families)
+        times = [per[s]["time"] for s in cheater if per.get(s, {}).get("time")]
+        years = years_since(max(times), now) if times else None
+        lr = list_cheater_lr(k, years)
+        where = "1 cheater list" if n == 1 else f"{n} cheater lists"
+        why = "Lists of reported cheaters that someone checked; they can be wrong (stolen accounts get returned)."
+        if k < len(cheater):
+            why += f" Some copy others, so they count as {k} independent list{'s' * (k > 1)}."
+        if years is not None and years >= 1:
+            why += f" Last seen on a list {years:.0f} year{'s' * (round(years) != 1)} ago, so it counts less."
+        return [Clue("lists", lr, f"on {where} ({', '.join(sorted(attrs))}){names}", why, source="lists")]
+    where = "1 list" if n == 1 else f"{n} lists"
     if attrs - {"racist"}:
-        return [Clue("lists", LIST_SUSPICIOUS_LR[min(n, 2)], f"on {where} as {', '.join(sorted(attrs))}",
-                     "Listed as suspicious, without the list saying they cheat.", source="lists")]
-    return []  # racist only: says nothing about cheating
+        return [Clue("lists", LIST_SUSPICIOUS_LR, f"on {where} as {', '.join(sorted(attrs))}{names}",
+                     "Listed as suspicious (SteamRep: trade scams), not as a cheater.", source="lists")]
+    return [Clue("lists", RACIST_LIST_LR, f"on {where} as racist{names}",
+                 "Listed for racism, which says nothing about cheating.", source="lists")]
 
 
-MARK_LR = 100.0  # your own judgement after watching them: you decided, so it reaches Likely by itself
+MARK_LR = 150.0  # your own judgement, not evidence to calibrate: big enough to reach Likely by itself at a 2% start (75%)
+MARK_KEY = "marked"  # the page shows this clue as YOUR MARK
 
 
 def mark_clues(app, p):
     mark = getattr(app, "marks", {}).get(str(p.sid))
     if not mark:
         return []
-    return [Clue("marked", MARK_LR, f"marked by you as {mark.get('reason', 'cheater')}",
-                 "You watched them and judged it yourself.", source="you")]
+    return [Clue(MARK_KEY, MARK_LR, f"marked by you as {mark.get('reason', 'cheater')}",
+                 "You watched them and judged it yourself (Mark as cheater); Unmark as cheater takes it back.", source="you")]
 
 
-BOT_NAME_LR = 30.0  # bots copy a name already in the server; honest players almost never share an exact name
+BOT_NAME_LR = 30.0  # LR_RESEARCH s12 (no data, kept): bots copy names by design; humans rarely share an exact name
 
 
 def bot_name_clues(app, p):
@@ -195,28 +268,50 @@ def bot_name_clues(app, p):
     return []
 
 
-# VAC and game bans by how long ago: a recent ban on an account still playing TF2 says the most.
-# Older bans may be from another game or long ago, so they say less.
-BAN_LR = ((365, 8.0), (3 * 365, 4.0), (None, 2.0))
-MANY_BANS = 1.5     # two or more bans on the account: x1.5 more (kept under 12 in all)
-COMMUNITY_BAN_LR = 1.5  # Steam community ban: rule breaking, not necessarily cheating
-SERVER_CHEAT_BAN_LR = {1: 4.0, 2: 8.0}  # community servers' admins banned them for cheating (2 = 2+ servers)
-SERVER_OTHER_BAN_LR = 1.2  # banned on a server for something else (mic spam, ...)
+# VAC and game bans fade smoothly with age. A ban seen in a casual match is almost always from
+# another game (a TF2 VAC ban keeps them off Valve's servers): "cheated somewhere before".
+BAN_LR0 = 8.0      # LR_RESEARCH s3: a ban today; 15-30% of cheaters have an earlier ban vs 2-4% of honest players
+BAN_TAU_Y = 2.0    # LR_RESEARCH s3: e-folding time in years (1 y: x5.2, 3 y: x2.6)
+BAN_FLOOR = 1.5    # LR_RESEARCH s3: an old ban still says a little (6 y+: x1.5)
+BAN_EXTRA = 0.25   # LR_RESEARCH s3: each more ban x(1 + 0.25), counted up to 4 bans (repeat offenders 7.9%)
+BAN_MAX = 12.0     # LR_RESEARCH s3: cap for all bans together
+COMMUNITY_BAN_LR = 1.3  # LR_RESEARCH s3: community bans are rule breaking; 20% lifted within ~32 days
+SERVER_CHEAT_BAN_LR = {1: 4.0, 2: 8.0}  # LR_RESEARCH s3: admins' cheating bans, by server NETWORK (2 = 2+)
+SERVER_BAN_HALF_LIFE_Y = 3.0  # LR_RESEARCH s3: same fading as list entries
+SERVER_OTHER_BAN_LR = 1.1  # LR_RESEARCH s3: banned on a server for something else (mic spam, ...)
 
 
-def ban_clues(app, p):
+def ban_lr(days, n_bans=1):
+    """VAC + game bans: 1 + 7 * exp(-years / 2), never under x1.5, x1.25 per extra ban, at most x12."""
+    lr = max(BAN_FLOOR, 1 + (BAN_LR0 - 1) * math.exp(-(max(days, 0) / 365) / BAN_TAU_Y))
+    return min(BAN_MAX, lr * (1 + BAN_EXTRA * (min(max(n_bans, 1), 4) - 1)))
+
+
+def ban_network(ban):
+    """Which server network a SourceBans ban is from: the domain when the server is given as an
+    address ("bans.skial.com" -> "skial.com"), else its name without its number ("Skial #3" ->
+    "skial"). Servers of one network share one ban list, so they are one judgement."""
+    value = ban_field(ban, "server").strip()
+    if not value:
+        return ""
+    host = "" if " " in value else urllib.parse.urlparse(value if "://" in value else "//" + value).hostname or ""
+    if "." in host:
+        labels = [x for x in host.casefold().split(".") if x not in ("www", "bans", "sourcebans", "sb")]
+        return ".".join(labels[-2:])
+    return re.sub(r"[\W_]*(#?\d+|server)?\s*$", "", value.casefold()).strip() or value.casefold()
+
+
+def ban_clues(app, p, now=None):
     clues = []
     b = p.bans or {}
     vac, game = b.get("NumberOfVACBans") or 0, b.get("NumberOfGameBans") or 0
     if vac or game:
         days = b.get("DaysSinceLastBan") or 0
-        lr = next(lr for limit, lr in BAN_LR if limit is None or days < limit)
-        if vac + game >= 2:
-            lr = min(12.0, lr * MANY_BANS)
+        lr = ban_lr(days, vac + game)
         what = " + ".join(filter(None, (f"{vac} VAC ban" if vac else "", f"{game} game ban" if game else "")))
         age = f"{days} days ago" if days < 365 else f"{days // 365} year{'s' * (days >= 730)} ago"
         clues.append(Clue("bans", lr, f"{what}, last {age}",
-                          "A real ban from Valve; a recent one says most, an old one may be from another game.",
+                          "A real ban from Valve, likely from another game; it counts less every year.",
                           source="steam"))
     if b.get("CommunityBanned"):
         clues.append(Clue("community_ban", COMMUNITY_BAN_LR, "Steam community banned",
@@ -224,60 +319,72 @@ def ban_clues(app, p):
                           source="steam"))
     sb = p.sourcebans or []
     if sb:
-        cheat = {ban_field(ban, "server") or str(i) for i, ban in enumerate(sb)
-                 if CHEAT_BAN_RE.search(ban_field(ban, "reason"))}
+        cheat = [ban for ban in sb if CHEAT_BAN_RE.search(ban_field(ban, "reason"))]
+        networks = {ban_network(ban) or str(i) for i, ban in enumerate(cheat)}
+        reasons = []
+        for ban in sb:
+            reason = clean_reason(ban_field(ban, "reason"))
+            if reason and reason.casefold() not in {r.casefold() for r in reasons}:
+                reasons.append(reason)
+        said = f": {', '.join(reasons[:3])}{', …' if len(reasons) > 3 else ''}" if reasons else ""
         if cheat:
-            n = len(cheat)
-            clues.append(Clue("server_bans", SERVER_CHEAT_BAN_LR[min(n, 2)],
-                              f"banned for cheating on {n} community server{'s' * (n > 1)}",
-                              "A server admin judged it, not Valve; admins can be wrong.", source="steam"))
+            n = len(networks)
+            ages = [y for y in (years_since(ban_field(ban, "timestamp") or ban_field(ban, "date"), now)
+                                for ban in cheat) if y is not None]
+            years = min(ages) if ages else None
+            why = "A server admin judged it, not Valve; servers of one community share bans, so they count once."
+            if years is not None and years >= 1:
+                why += f" The newest is {years:.0f} year{'s' * (round(years) != 1)} old, so it counts less."
+            clues.append(Clue("server_bans", fade(SERVER_CHEAT_BAN_LR[min(n, 2)], years, SERVER_BAN_HALF_LIFE_Y),
+                              f"banned for cheating by {n} server communit{'ies' if n > 1 else 'y'}{said}",
+                              why, source="steam"))
         else:
-            clues.append(Clue("server_bans", SERVER_OTHER_BAN_LR, f"{len(sb)} community server ban{'s' * (len(sb) > 1)}",
+            clues.append(Clue("server_bans", SERVER_OTHER_BAN_LR,
+                              f"{len(sb)} community server ban{'s' * (len(sb) > 1)}{said}",
                               "Banned on a server, with no sign it was for cheating.", source="steam"))
     return clues
 
 
-# Experience: TF2 hours and account age as ONE clue (they go together, so not counted twice).
-# Cheaters and bots mostly play on throwaway accounts that get banned and replaced; years on one
-# account and many hours are more typical of honest players. Bots idle hours too, so many hours only
-# lower the odds a little (never under x0.4 together).
-HOURS_LR = ((100, 3.0), (300, 1.5), (1000, 1.0), (3000, 0.7), (None, 0.5))  # (below this many hours, LR)
-AGE_LR = ((90, 3.0), (365, 1.5), (5 * 365, 1.0), (None, 0.8))               # (below this many days, LR)
-EXPERIENCE_RANGE = (0.4, 6.0)
+# The account group: age, TF2 hours and the profile all say "how established is this account", so
+# they are ONE clue (LR_RESEARCH s7). Each part is a smooth curve, not steps (LR_RESEARCH s13).
+AGE_PIVOT_DAYS = 730.0    # LR_RESEARCH s4: fitted LR = 1 at ~720 days (listed cheaters vs casual players)
+AGE_SLOPE = 0.8           # LR_RESEARCH s4: least-squares slope -0.84 of log LR on log age
+AGE_RANGE = (0.25, 6.0)   # LR_RESEARCH s4: old accounts get bought/stolen (floor); the extreme data is bots (cap)
+HOURS_PIVOT = 500.0       # LR_RESEARCH s5: no TF2 data; same form as age, weaker (low confidence)
+HOURS_SLOPE = 0.35        # LR_RESEARCH s5
+HOURS_RANGE = (0.5, 3.5)  # LR_RESEARCH s5: bots idle hours, so many hours lower the odds only a little
+PROFILE_LR = {"private": 1.1, "never set up": 1.8, "limited": 2.0, "level 0": 1.5}  # LR_RESEARCH s6 (private: Blackburn 2011)
+PROFILE_MAX = 2.5         # LR_RESEARCH s6: the profile's parts together
+ACCOUNT_WEIGHTS = (1.0, 0.5, 0.25, 0.125)  # LR_RESEARCH s7: the strongest part in full, the next at half...
+ACCOUNT_RANGE = (0.2, 8.0)                 # LR_RESEARCH s7: the whole group
+ACCOUNT_MIN_EFFECT = 0.05  # under ~x1.05 either way the group isn't shown (it moves nothing you'd notice)
 
 
-def _step(value, table):
-    return next(lr for limit, lr in table if limit is None or value < limit)
+def age_lr(days):
+    """Account age: (days / 730) ^ -0.8, kept between x0.25 and x6. 90 days x5.3, 1 year x1.7,
+    2 years x1, 5 years x0.48, 10 years x0.28."""
+    return clamp((max(days, 1.0) / AGE_PIVOT_DAYS) ** -AGE_SLOPE, *AGE_RANGE)
 
 
-def experience_clues(app, p, now=None):
-    cfg = getattr(app, "cfg", {})
-    hours_table = ((cfg.get("low_hours", 100), 3.0),) + HOURS_LR[1:]
-    age_table = ((cfg.get("new_account_days", 90), 3.0),) + AGE_LR[1:]
-    lr, parts = 1.0, []
-    if isinstance(p.hours, (int, float)) and not isinstance(p.hours, bool):
-        lr *= _step(p.hours, hours_table)
-        parts.append(f"{p.hours:,.0f} hours")
-    created = (p.summary or {}).get("timecreated")
-    if created:
-        days = ((now or time.time()) - created) / 86400
-        lr *= _step(days, age_table)
-        parts.append(f"{int(days // 365)}-year-old account" if days >= 365 else f"{int(days)}-day-old account")
-    lr = clamp(lr, *EXPERIENCE_RANGE)
-    if not parts or abs(math.log(lr)) < 0.05:
-        return []
-    why = ("Cheaters and bots mostly use new throwaway accounts; new honest players exist too." if lr > 1 else
-           "Cheaters mostly use new accounts that get banned and replaced; bots idle hours too, so this "
-           "lowers the odds only a little.")
-    return [Clue("experience", lr, ", ".join(parts), why, source="steam")]
+def hours_lr(hours):
+    """TF2 hours: ((h + 10) / 510) ^ -0.35, kept between x0.5 and x3.5. 0 h x3.5, 100 h x1.7,
+    500 h x1, 3,000 h x0.54."""
+    return clamp(((max(hours, 0) + 10) / (HOURS_PIVOT + 10)) ** -HOURS_SLOPE, *HOURS_RANGE)
 
 
-# Throwaway signs on the profile, as one clue (they go together): never set up, level 0, no friends.
-PROFILE_LR = {"private": 1.3, "never set up": 2.5, "limited": 3.0, "level 0": 1.5}
-PROFILE_MAX = 4.0
+def account_lr(lrs):
+    """The group's LR: in log terms the parts that point the same way are sorted by size and weighted
+    1, 0.5, 0.25, ... (they mostly repeat each other); the two directions are added; kept between
+    x0.2 and x8."""
+    logs = [math.log(x) for x in lrs if x and x > 0 and abs(math.log(x)) > 1e-9]
+    total = 0.0
+    for side in (sorted((l for l in logs if l > 0), reverse=True), sorted(l for l in logs if l < 0)):
+        total += sum(w * l for w, l in zip(ACCOUNT_WEIGHTS, side))
+    return clamp(math.exp(total), *ACCOUNT_RANGE)
 
 
-def profile_clues(app, p):
+def profile_parts(p):
+    """The profile's throwaway signs, as words."""
     found = []
     s = p.summary
     if s:
@@ -287,21 +394,46 @@ def profile_clues(app, p):
             found.append("never set up")
     if p.level == 0:
         found.append("limited" if p.friends == set() else "level 0")
-    if not found:
+    return found
+
+
+PROFILE_WORDS = {"private": "private profile", "never set up": "profile never set up",
+                 "limited": "level 0, no friends (limited account)", "level 0": "Steam level 0"}
+
+
+def account_clues(app, p, now=None):
+    parts = []  # (words, LR)
+    created = (p.summary or {}).get("timecreated")
+    if created:
+        days = ((now or time.time()) - created) / 86400
+        parts.append((f"{int(days // 365)}-year-old account" if days >= 365 else f"{int(days)}-day-old account",
+                      age_lr(days)))
+    if isinstance(p.hours, (int, float)) and not isinstance(p.hours, bool):  # hidden hours (None): no part, x1
+        parts.append((f"{p.hours:,.0f} hours", hours_lr(p.hours)))
+    found = profile_parts(p)
+    if found:
+        parts.append((", ".join(PROFILE_WORDS[f] for f in found),
+                      min(PROFILE_MAX, math.prod(PROFILE_LR[f] for f in found))))
+    if not parts:
         return []
-    lr = min(PROFILE_MAX, math.prod(PROFILE_LR[f] for f in found))
-    words = {"private": "private profile", "never set up": "profile never set up",
-             "limited": "level 0, no friends (limited account)", "level 0": "Steam level 0"}
-    return [Clue("profile", lr, ", ".join(words[f] for f in found),
-                 "Common for bots and throwaway cheat accounts, but many honest players hide their profile too.",
-                 source="profile")]
+    lr = account_lr([x for _, x in parts])
+    if abs(math.log(lr)) < ACCOUNT_MIN_EFFECT:
+        return []
+    parts.sort(key=lambda part: abs(math.log(part[1])), reverse=True)
+    text = "; ".join(f"{words} {lr_text(x)}" for words, x in parts)
+    why = ("Cheaters and bots mostly use new, bare accounts; new honest players exist too." if lr > 1 else
+           "Years on one account with many hours is typical of honest players, but accounts get sold or stolen.")
+    ups, downs = sum(x > 1 for _, x in parts), sum(x < 1 for _, x in parts)
+    if max(ups, downs) > 1:
+        why += " These parts overlap, so they count as one: the biggest in full, the next at half strength."
+    return [Clue("account", lr, text, why, source="steam")]
 
 
 # Words on the profile: other players writing "cheater" in the comments (angry losers do that too),
-# and the bio (may be a joke or a boast). One clue, at most x5.
-COMMENT_LR = {1: 2.0, 2: 3.0, 3: 4.0}
-BIO_LR = 1.5
-WORDS_MAX = 5.0
+# and the bio (may be a joke or a boast). One clue.
+COMMENT_LR = {1: 1.3, 2: 1.5, 3: 2.0}  # LR_RESEARCH s8: 6.1% of reported-but-clean accounts banned later: one accusation says little
+BIO_LR = 1.3                           # LR_RESEARCH s8
+WORDS_MAX = 3.0                        # LR_RESEARCH s8: the profile's words together
 
 
 def profile_word_clues(app, p):
@@ -323,36 +455,66 @@ def profile_word_clues(app, p):
                  source="profile")]
 
 
-# Friends with cheaters (secondhand): cheaters often play and trade with each other, but being
-# friends with one isn't cheating. One clue: the strongest of the three friend flags.
-FRIEND_LR = {"secondhand": 2.5, "flagged": 2.0, 1: 2.0, 2: 3.0, 5: 4.0}
+# Friends who are flagged, by the SHARE of their friends: ~70% of cheaters have >= 10% cheater
+# friends, ~70% of honest players have none (LR_RESEARCH s9, Blackburn 2011).
+FRIEND_LR_ANY = 1.8    # LR_RESEARCH s9: any flagged friend (or the friend count is unknown)
+FRIEND_LR_TENTH = 3.0  # LR_RESEARCH s9: 10% or more of their friends flagged
+FRIEND_LR_HALF = 6.0   # LR_RESEARCH s9: half or more (~15% of cheaters, ~1-2% of honest players)
+
+
+def friends_lr(n_flagged, n_friends=None):
+    if n_flagged <= 0:
+        return 1.0
+    if not n_friends:
+        return FRIEND_LR_ANY
+    share = n_flagged / max(n_friends, n_flagged)
+    return FRIEND_LR_HALF if share >= 0.5 else FRIEND_LR_TENTH if share >= 0.1 else FRIEND_LR_ANY
+
+
+def flagged_friends(app, p):
+    """The friends of p who are known cheaters, marked by you, or flagged red in this lobby."""
+    friends = p.friends if isinstance(p.friends, set) else set()
+    marks = getattr(app, "marks", {}) or {}
+    marked = {int(k) for k in marks if str(k).isdigit()}
+    found = (friends & (set(getattr(app, "cheater_ids", ()) or ()) | marked)) - {p.sid}
+    for k, mark in marks.items():
+        if str(k).isdigit() and p.sid in set(mark.get("friends", ()) or ()):
+            found.add(int(k))
+    flags = getattr(app, "flags", {})
+    for q in getattr(app, "players", {}).values():
+        if q.sid != p.sid and (q.sid in friends or (isinstance(q.friends, set) and p.sid in q.friends)) \
+                and max((s for s, _ in flags.get(q.sid, [])), default=-1) >= 3:
+            found.add(q.sid)
+    return found
+
+
+def _named(text):
+    """How many people a friend flag names ("friends with flagged Ann, Bo" -> 2)."""
+    if m := re.match(r"friends with (\d+) known cheater", text):
+        return int(m[1])
+    names = re.sub(r"^(secondhand cheater \(friends with |friends with flagged )", "", text).rstrip(")")
+    return max(1, len([n for n in names.split(", ") if n.strip()]))
 
 
 def friend_clues(app, p):
-    best, texts = 1.0, []
-    for text in _flags(app, p):
-        lr = None
-        if text.startswith("secondhand cheater"):
-            lr = FRIEND_LR["secondhand"]
-        elif text.startswith("friends with flagged"):
-            lr = FRIEND_LR["flagged"]
-        elif m := re.match(r"friends with (\d+) known cheater", text):
-            n = int(m[1])
-            lr = FRIEND_LR[5] if n >= 5 else FRIEND_LR[2] if n >= 2 else FRIEND_LR[1]
-        if lr:
-            best = max(best, lr)
-            texts.append(text)
+    texts = [t for t in _flags(app, p) if t.startswith(("secondhand cheater", "friends with flagged"))
+             or re.match(r"friends with \d+ known cheater", t)]
     if not texts:
         return []
-    return [Clue("friends", best, "; ".join(texts),
-                 "Cheaters often have cheater friends, but being friends with one isn't cheating.", source="steam")]
+    n = max(len(flagged_friends(app, p)), sum(_named(t) for t in texts))
+    total = len(p.friends) if isinstance(p.friends, set) and p.friends else None
+    share = f" ({n} of {total} friends)" if total else ""
+    return [Clue("friends", friends_lr(n, total), "; ".join(texts) + share,
+                 "Cheaters often have cheater friends, but being friends with one isn't cheating"
+                 + ("; counted by the share of their friends." if total else "; their friend list is hidden."),
+                 source="steam")]
 
 
 # The demo check (demo_check.py). Strong checks are proof: an unmodified game can't send them.
 # Weak checks: cheats make them, but lag and packet loss do too; LR grows with the count, and
 # high ping (demo_check.ping_note) shrinks it to a quarter.
-DEMO_PROOF_LR = 1000.0
-DEMO_WEAK_PER_HIT, DEMO_WEAK_MAX, DEMO_HIGH_PING_SHARE = 0.5, 6.0, 0.25
+DEMO_PROOF_LR = 1000.0  # LR_RESEARCH s12 (kept): the only place proof is justified
+DEMO_WEAK_PER_HIT, DEMO_WEAK_MAX, DEMO_HIGH_PING_SHARE = 0.5, 6.0, 0.25  # LR_RESEARCH s12 (kept, no data): low caps
 
 
 def demo_clues(app, p):
@@ -379,32 +541,54 @@ def demo_clues(app, p):
     return clues
 
 
-# Most Sniper headshots in one life ever (history). From a sample: 23% of listed cheaters reached
-# 30 or more, against 3% of other players: 0.23 / 0.03 = about x7.7 (a small sample, so x7).
-HS_RECORD_LR = 7.0
-
-
-def hs_record_clues(app, p):
-    limit = getattr(app, "cfg", {}).get("headshot_record_flag", 30)
-    if isinstance(p.hs_record, int) and not isinstance(p.hs_record, bool) and p.hs_record >= limit:
-        return [Clue("hs_record", HS_RECORD_LR, f"{p.hs_record} headshots in one life (Sniper record)",
-                     f"In a sample, 23% of listed cheaters reached {limit}+, against 3% of other players.",
-                     source="history")]
-    return []
-
-
-# Live rates this match: a binomial test against honest play, from a minimum sample.
-# Headshots: share of Sniper kills that are headshots. Honest pub Snipers average around 45% (rifle);
-# the test assumes 50% so good honest players aren't punished. The Huntsman's headshots are harder:
-# 40%. A mix of both: weighted by kills.
-HONEST_HS_RIFLE, HONEST_HS_BOW = 0.50, 0.40
+# Live rates this match, as a Bayes factor: how likely k hits of n kills are for a cheater against
+# an honest player whose own rate varies (both beta-binomial), from a minimum sample. Not a tail
+# p-value, which isn't a likelihood ratio (LR_RESEARCH s10, s13).
+HS_HONEST_MEAN = 0.72   # LR_RESEARCH s10: 72.0% of 16,237 rifle kills by Snipers on logs.tf were headshots
+HS_HONEST_CONC = 30.0   # LR_RESEARCH s10: fit a+b = 40; 30 is wider on purpose, kinder to good Snipers
+HS_CHEAT_MEAN = 0.93    # LR_RESEARCH s10: aimbot Snipers headshot nearly every kill (estimate)
+HS_CHEAT_CONC = 15.0    # LR_RESEARCH s10: wide, for closet cheaters
+HS_BOW_SHIFT = -0.12    # LR_RESEARCH s10: Huntsman honest mean ~0.60 (estimate, no data)
+HS_LR_RANGE = (1.0, 30.0)  # LR_RESEARCH s10: never lowers the odds; capped, the honest reference is a sample
+HONEST_HS_RIFLE, HONEST_HS_BOW = HS_HONEST_MEAN, HS_HONEST_MEAN + HS_BOW_SHIFT
 BOW_RE = re.compile(r"arrow|huntsman|compound_bow")
-MIN_RATE_KILLS = 10
-# Random crits: TF2's random crit chance is 2%, rising to 12% with damage dealt in the last 20
-# seconds (and rapid-fire weapons crit in bursts). A crit does 3x damage, so crits are a bigger share
-# of kills than of shots, and a Kritzkrieg uber or the round-win crits add more. player_flags'
-# NORMAL_CRIT_RATE (25% of kills) is a generous upper estimate of all that, used here too.
-HONEST_CRIT = NORMAL_CRIT_RATE
+MIN_RATE_KILLS = 10     # under this many kills a rate never moves the odds
+# Random crits, only single-shot ranged weapons (player_flags.RANDOM_CRIT_WEAPONS: no melee, no
+# rapid-fire). Random crits are 2-8% of shots; a crit does 3x damage, so their share of kills is higher.
+CRIT_HONEST_MEAN = 0.10  # LR_RESEARCH s11: honest crit-kill share of ranged weapons (estimate, at most ~15%)
+CRIT_HONEST_CONC = 20.0  # LR_RESEARCH s11
+CRIT_CHEAT_MEAN = 0.45   # LR_RESEARCH s11: crit hacks (estimate)
+CRIT_CHEAT_CONC = 6.0    # LR_RESEARCH s11
+CRIT_LR_RANGE = (1.0, 20.0)  # LR_RESEARCH s11
+
+
+def _lbeta(a, b):
+    return math.lgamma(a) + math.lgamma(b) - math.lgamma(a + b)
+
+
+def betabin_lr(k, n, honest_mean, honest_conc, cheat_mean, cheat_conc):
+    """P(k of n | cheater) / P(k of n | honest), both beta-binomial (the binomial coefficients cancel)."""
+    ah, bh = honest_mean * honest_conc, (1 - honest_mean) * honest_conc
+    ac, bc = cheat_mean * cheat_conc, (1 - cheat_mean) * cheat_conc
+    return math.exp((_lbeta(k + ac, n - k + bc) - _lbeta(ac, bc)) - (_lbeta(k + ah, n - k + bh) - _lbeta(ah, bh)))
+
+
+def betabin_tail(k, n, mean, conc):
+    """The chance of k or more hits of n for an honest player (rates varying around mean): the
+    "1 in N by luck" in the text. The LR is betabin_lr, not this."""
+    a, b = mean * conc, (1 - mean) * conc
+    return min(1.0, sum(math.exp(math.lgamma(n + 1) - math.lgamma(i + 1) - math.lgamma(n - i + 1)
+                                 + _lbeta(i + a, n - i + b) - _lbeta(a, b)) for i in range(k, n + 1)))
+
+
+def hs_lr(k, n, honest_mean=HS_HONEST_MEAN):
+    """The headshot clue's LR, kept between x1 and x30: 24/26 x5, 15/15 x24, 30/30 x30."""
+    return clamp(betabin_lr(k, n, honest_mean, HS_HONEST_CONC, HS_CHEAT_MEAN, HS_CHEAT_CONC), *HS_LR_RANGE)
+
+
+def crit_lr(k, n):
+    """The random-crit clue's LR, kept between x1 and x20."""
+    return clamp(betabin_lr(k, n, CRIT_HONEST_MEAN, CRIT_HONEST_CONC, CRIT_CHEAT_MEAN, CRIT_CHEAT_CONC), *CRIT_LR_RANGE)
 
 
 def honest_hs_rate(app, p):
@@ -420,38 +604,127 @@ def honest_hs_rate(app, p):
     return (rifle * HONEST_HS_RIFLE + bow * HONEST_HS_BOW) / (rifle + bow)
 
 
-def rate_clue(key, kills, hits, p_honest, text, honest_words, source="live"):
-    """A Clue from a binomial test, or None while the sample is too small or luck explains it."""
-    if kills < MIN_RATE_KILLS or hits <= kills * p_honest:
-        return None
-    p_tail = binomial_tail(kills, hits, p_honest)
-    lr = tail_lr(p_tail)
-    if lr <= 1.0:
-        return None
-    return Clue(key, lr, text, f"{honest_words}; this is {one_in(p_tail)} by luck.", source=source)
-
-
 def rate_clues(app, p):
     clues = []
     kills, hs = (getattr(app, "kills", {}).get(p.sid) or (0, 0))[:2]
-    if kills:
+    if kills >= MIN_RATE_KILLS:
         rate = honest_hs_rate(app, p)
-        c = rate_clue("hs_rate", kills, hs, rate, f"{hs}/{kills} Sniper headshots ({round(100 * hs / kills)}%)",
-                      f"An honest Sniper hits ~45% (tested at {round(100 * rate)}% to be fair)")
-        clues += [c] if c else []
+        lr = hs_lr(hs, kills, rate)
+        if lr > 1.0:
+            tail = betabin_tail(hs, kills, rate, HS_HONEST_CONC)
+            clues.append(Clue("hs_rate", lr, f"{hs}/{kills} Sniper headshots ({round(100 * hs / kills)}%)",
+                              f"Honest Snipers headshot ~{round(100 * rate)}% of their kills; "
+                              f"this is {one_in(tail)} by luck.", source="live"))
     cfg = getattr(app, "cfg", {})
     kills, crits = (getattr(app, "crits", {}).get(p.sid) or (0, 0))[:2]
     if kills >= max(MIN_RATE_KILLS, cfg.get("crit_min_kills", 0)):
-        c = rate_clue("crit_rate", kills, crits, HONEST_CRIT, f"{crits}/{kills} random-crit kills ({round(100 * crits / kills)}%)",
-                      "Random crits are 2-12% of shots; even with Kritz and round-win crits honest kills stay under ~25%")
-        clues += [c] if c else []
+        lr = crit_lr(crits, kills)
+        if lr > 1.0:
+            tail = betabin_tail(crits, kills, CRIT_HONEST_MEAN, CRIT_HONEST_CONC)
+            clues.append(Clue("crit_rate", lr, f"{crits}/{kills} random-crit kills ({round(100 * crits / kills)}%)",
+                              f"Random crits are 2-8% of shots, about {round(100 * CRIT_HONEST_MEAN)}% of honest "
+                              f"kills (no melee); this is {one_in(tail)} by luck.", source="live"))
     return clues
 
 
-BUILTIN_SOURCES = (list_clues, mark_clues, bot_name_clues, ban_clues, experience_clues, profile_clues,
-                   profile_word_clues, friend_clues, demo_clues, hs_record_clues, rate_clues)
+# Headshot and crit flags the rate test can't use yet (too few kills, or luck explains the rate): the
+# flag still shows, as a clue that moves nothing. Registered before rate_clues, whose real clue (same
+# key) replaces it as soon as the test says something.
+SMALL_SAMPLE_LR = 1.0
+
+
+def small_sample_clues(app, p):
+    clues = []
+    for text in _flags(app, p):
+        for key, pattern, stats in (("hs_rate", r"% headshots", "kills"), ("crit_rate", r"crit kills", "crits")):
+            if not re.search(pattern, text) or any(c.key == key for c in clues):
+                continue
+            kills, hits = (getattr(app, stats, {}).get(p.sid) or (0, 0))[:2]
+            if kills < MIN_RATE_KILLS:
+                why = (f"Only {kills} kill{'s' * (kills != 1)} so far: too few to tell skill or luck from cheating "
+                       f"(the test starts at {MIN_RATE_KILLS}).")
+            else:
+                mean, conc = ((honest_hs_rate(app, p), HS_HONEST_CONC) if key == "hs_rate"
+                              else (CRIT_HONEST_MEAN, CRIT_HONEST_CONC))
+                why = (f"Honest players get this by luck often enough ({one_in(betabin_tail(hits, kills, mean, conc))}), "
+                       "so it doesn't change the odds.")
+            clues.append(Clue(key, SMALL_SAMPLE_LR, text, why, source="live"))
+    return clues
+
+
+# Flags that say nothing about cheating, shown so you know them, at x1:
+# - a trade ban or probation: Valve limits trading after scams, chargebacks or a stolen account, not
+#   for cheating, and no sample we know says cheaters get them more often;
+# - friends in this lobby: playing with friends is normal (friends who ARE cheaters are friend_clues).
+TRADE_LR = 1.0
+LOBBY_FRIENDS_LR = 1.0
+
+
+def info_clues(app, p):
+    clues = []
+    for text in _flags(app, p):
+        if text.startswith("trade ") and not any(c.key == "trade" for c in clues):
+            clues.append(Clue("trade", TRADE_LR, text, "A limit on trading (scams, chargebacks), not a cheating ban.",
+                              source="steam"))
+        elif text.startswith("friends in lobby") and not any(c.key == "lobby_friends" for c in clues):
+            clues.append(Clue("lobby_friends", LOBBY_FRIENDS_LR, text,
+                              "Playing with friends is normal; friends who are known cheaters count separately.",
+                              source="steam"))
+    return clues
+
+
+BUILTIN_SOURCES = (list_clues, mark_clues, bot_name_clues, ban_clues, account_clues,
+                   profile_word_clues, friend_clues, demo_clues, small_sample_clues, rate_clues,
+                   info_clues)
 for _fn in BUILTIN_SOURCES:
     register(_fn)
+
+
+# --- which flag a clue is about ------------------------------------------------------------------
+
+# A flag (player_flags.evaluate and the rest, as the list shows them) and the clue that counts it.
+# A clue whose text is the flag's own text matches first; then these patterns on the flag's text.
+DEMO_PROOF_FLAG = r"^demo check: (looked past|turned 180)"
+FLAG_CLUES = {
+    "lists": r"^on .* lists?\b", MARK_KEY: r"^marked by you", "bot_name": r"copied someone's name",
+    "bans": r"VAC ban|game ban", "community_ban": r"community banned", "server_bans": r"server bans?",
+    "account": r"^new account|^only \d|private profile|never set up|level 0|limited account",
+    "profile_words": r"profile comment|^bio says", "friends": r"^secondhand cheater|^friends with (flagged|\d)",
+    "demo_weak": r"^demo check: \d", "hs_rate": r"% headshots",
+    "crit_rate": r"crit kills", "trade": r"^trade ", "lobby_friends": r"^friends in lobby",
+}
+
+
+def flag_clue(text, clues):
+    """The clue that counts the flag with this text, or None."""
+    for c in clues:
+        if c.text == text:
+            return c
+    for c in clues:
+        pattern = FLAG_CLUES.get(c.key)
+        if pattern is None and c.proof and c.key.startswith("demo"):
+            pattern = DEMO_PROOF_FLAG
+        if pattern and re.search(pattern, text, re.I):
+            return c
+    return None
+
+
+def all_flags(app, p):
+    """[(severity, text)]: the player's flags and their profile's keyword hits, as the page shows them."""
+    return list(getattr(app, "flags", {}).get(p.sid, [])) + profile_flags(getattr(p, "profile", None))
+
+
+LEFTOVER_LR = 1.0  # a flag no clue above knows (a new kind): shown, but it moves nothing until it has an LR
+
+
+def leftover_clues(app, p, clues):
+    """A x1 clue for each flag no clue counts, so every reason the list has also shows with the score."""
+    out = []
+    for severity, text in all_flags(app, p):
+        if flag_clue(text, clues + out) is None:
+            why = flag_why(severity, text)[1] or "Shown for information."
+            out.append(Clue("flag:" + text, LEFTOVER_LR, text, why + " Not counted in the score.", source="flag"))
+    return out
 
 
 # --- the score -----------------------------------------------------------------------------------
@@ -477,7 +750,9 @@ def gather(app, p):
         for c in found:
             if c and c.lr > 0:
                 by_key[c.key] = c
-    return sorted(demo_overlap(list(by_key.values())), key=impact, reverse=True)
+    clues = say_so_overlap(demo_overlap(list(by_key.values())))
+    clues += leftover_clues(app, p, clues)
+    return sorted(clues, key=impact, reverse=True)
 
 
 # Nocrex's weak demo checks (demo_weak: aim flicks, angle repeats) and demo_clues' aim clues
@@ -502,10 +777,27 @@ def demo_overlap(clues):
     return [shrunk.get(id(c), c) for c in clues]
 
 
+# Profile comments and chat accusations are both "people say so" (LR_RESEARCH s8): when both raise
+# the odds, the smaller counts at half strength in log terms (its square root), as in the account group.
+SAY_SO_KEYS = ("profile_words", "chat_accused")
+SAY_SO_POWER = 0.5  # LR_RESEARCH s7/s8: the second of two overlapping parts at weight 0.5
+
+
+def say_so_overlap(clues):
+    both = [c for c in clues if c.key in SAY_SO_KEYS and c.lr > 1 and not c.proof]
+    if len(both) < 2:
+        return clues
+    small = min(both, key=lambda c: c.lr)
+    shrunk = replace(small, lr=small.lr ** SAY_SO_POWER,
+                     why=small.why + " Counted at half strength: other players saying so is one kind of clue.")
+    return [shrunk if c is small else c for c in clues]
+
+
 def score(app, p):
     clues = gather(app, p)
-    prob = combine(PRIOR, [c.lr for c in clues])
-    return Score(prob, band_of(prob, any(c.proof for c in clues)), clues, PRIOR)
+    prior = prior_of(app)
+    prob = combine(prior, [c.lr for c in clues])
+    return Score(prob, band_of(prob, any(c.proof for c in clues)), clues, prior)
 
 
 def is_cheater(app, p, sc=None):
@@ -569,7 +861,7 @@ def breakdown(sc):
     together as one line at the end), the result."""
     small = small_row(sc.clues)
     return {
-        "start": f"Start: {round(100 * sc.prior)}% of casual players cheat (odds {odds_text(to_odds(sc.prior))})",
+        "start": f"Start: {100 * sc.prior:.3g}% of casual players cheat (odds {odds_text(to_odds(sc.prior))})",
         "rows": [{"lr": lr_text(c.lr), "up": c.lr >= 1, "text": c.text, "why": c.why, "proof": c.proof,
                   "key": c.key, "source": c.source} for c in sc.clues if not is_small(c)] + ([small] if small else []),
         "end": f"= odds {odds_text(sc.odds)}",

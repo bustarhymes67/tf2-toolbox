@@ -66,7 +66,7 @@ class EveryLanguageTest(unittest.TestCase):
         tf2_translator.translate_chat = lambda msg, target: answers[msg]
         try:
             lines, results = queue.Queue(), queue.Queue()
-            cfg = dict(tf2_translator.DEFAULTS)
+            cfg = dict(settings.DEFAULTS)
             threading.Thread(target=tf2_translator.worker, args=(cfg, lines, results), daemon=True).start()
             for msg in answers:
                 lines.put(f"dan :  {msg}")
@@ -123,7 +123,7 @@ class NamesStayTest(unittest.TestCase):
         real, tf2_translator.translate_chat = tf2_translator.translate_chat, fake
         tf2_translator.KEEP_NAMES = {"tomato"}
         lines, results = queue.Queue(), queue.Queue()
-        threading.Thread(target=tf2_translator.worker, args=(dict(tf2_translator.DEFAULTS, target_lang="en"), lines, results),
+        threading.Thread(target=tf2_translator.worker, args=(dict(settings.DEFAULTS, translator_target_lang="en"), lines, results),
                          daemon=True).start()
         try:
             lines.put("dan :  tomato")         # only a name: nothing to translate
@@ -198,8 +198,6 @@ class TranslateCommandTest(unittest.TestCase):
             dan = a.sid_by_name("dan")
             g.on_screen_thread(lambda: (a.select(dan), a.toggle_speak_mute()))
             self.assertEqual(a.cfg["speak_muted"], [dan])
-            self.assertEqual(a.buttons["mute"].cget("text"), "Unmute !speak")
-            self.assertEqual(a.speak_mutes_button.value.cget("text"), "1 muted")
             g.say("dan", "!speak russian spam", 0.5)
             g.say("Hank", "!speak russian hello", 0.6)
             self.assertEqual(asked, ["hello"])  # only the one who isn't muted
@@ -359,23 +357,20 @@ class SaveConfigTest(unittest.TestCase):
             self.assertIn("RCON_PASSWORD=x", lines)
             self.assertEqual(settings.load_config()["steam_api_key"], "x")  # read back from the secrets file
 
-    def test_the_renamed_commands_keep_their_switches(self):
+    def test_info_commands_added_later_start_on(self):
         with temp_settings():
-            open(settings.CONFIG_PATH, "w").write(
-                '{"check_command": false, "info_commands": {"status": false, "top": true}}')
+            open(settings.CONFIG_PATH, "w").write('{"info_commands": {"check": false, "top": true}}')
             cfg = settings.load_config()
-            self.assertFalse(cfg["who_command"])      # the old !check is !who now
-            self.assertFalse(cfg["info_commands"]["check"])  # the old !status is !check now
-            self.assertNotIn("status", cfg["info_commands"])
+            self.assertFalse(cfg["info_commands"]["check"])
             self.assertTrue(cfg["info_commands"]["ip"])  # one that came later: on
 
-    def test_the_old_flagged_only_switch_becomes_the_flagged_chip(self):
+    def test_the_old_windows_settings_are_dropped(self):
         with temp_settings():
-            open(settings.CONFIG_PATH, "w").write('{"flagged_only": true, "columns": ["Kills", "Deaths", "Flags"]}')
+            open(settings.CONFIG_PATH, "w").write(
+                '{"web_ui": false, "token_panel": true, "scanner_width": 500, "scanner_minimized": true}')
             cfg = settings.load_config()
-            self.assertEqual(cfg["player_filter"], "flagged")
-            self.assertNotIn("flagged_only", cfg)
-            self.assertEqual(cfg["columns"], ["K/D", "Flags"])
+            for gone in ("web_ui", "token_panel", "scanner_width", "scanner_minimized"):
+                self.assertNotIn(gone, cfg)
 
     def test_other_lines_in_the_secrets_file_are_kept(self):
         with temp_settings():

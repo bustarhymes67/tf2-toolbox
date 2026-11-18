@@ -1,4 +1,4 @@
-"""Keys saved while the scanner runs work without a restart, and the Help page lists every command."""
+"""Keys saved while the toolbox runs work without a restart, and the Help and Chat pages list every command."""
 import os
 import time
 import unittest
@@ -9,18 +9,6 @@ import settings
 import tf2_lobby_scanner
 
 STEAM = "0123456789ABCDEF0123456789ABCDEF"
-
-
-def texts(widget):
-    """Every label text under a widget."""
-    found = []
-    for child in widget.winfo_children():
-        try:
-            found.append(child.cget("text"))
-        except Exception:
-            pass
-        found += texts(child)
-    return found
 
 
 class LiveKeysTest(unittest.TestCase):
@@ -52,36 +40,20 @@ class LiveKeysTest(unittest.TestCase):
 
 
 class HelpPageTest(unittest.TestCase):
-    def test_every_command_is_on_the_help_page(self):
+    def test_every_command_is_on_the_help_or_chat_page(self):
+        from web_chat_status_help import chat_state, help_state
+
         def script(g):
             a = g.app
-            g.on_screen_thread(lambda: (a.set_visible(True), a.show_page("Help")))
-            shown = g.on_screen_thread(lambda: texts(a.pages["Help"]))
+            cards = g.on_screen_thread(lambda: help_state(a))["cards"]
+            shown = {" ".join(filter(None, row["usage"])) for card in cards for row in card["rows"]}
+            shown |= {" ".join(filter(None, c["usage"])) for c in g.on_screen_thread(lambda: chat_state(a))["commands"]}
             for command in ("!who <name>", "!check <name>", "!medic", "!top", "!kd <name>", "!hours <name>",
                             "!cheaters", "!ip <name>", "!help", "!speak <language> <message>", "!badbot",
                             "!goodbot", "!duel <name>", "!duel scores", "F9", "F8"):
                 self.assertIn(command, shown)
             self.assertNotIn("F4", shown)
             self.assertNotIn("Home", shown)  # !speak is switched on the Chat page now
-        Game().play(script)
-
-
-
-class ChatPreviewTest(unittest.TestCase):
-    def test_hovering_a_card_plays_what_it_posts(self):
-        import screens
-        def script(g):
-            a = g.app
-            g.on_screen_thread(lambda: (a.set_visible(True), a.show_page("Chat")))
-            card = a.beef_button
-            self.assertIsNotNone(card.preview)
-            self.assertIsNone(a.speak_mutes_button.preview)  # a list, nothing to play
-            g.on_screen_thread(card._enter)
-            time.sleep(screens.PREVIEW_DELAY / 1000 + len(screens.CHAT_EXAMPLES["beef"]) * screens.PREVIEW_STEP / 1000 + 0.5)
-            shown = g.on_screen_thread(lambda: texts(card.preview.win) if card.preview.win else [])
-            self.assertIn("'Ivan' (RU) killed 'Taras' (UA) | Russia 1 - 0 Ukraine. Za pobedu!", shown)
-            g.on_screen_thread(card.preview.hide)
-            self.assertIsNone(card.preview.win)
         Game().play(script)
 
 

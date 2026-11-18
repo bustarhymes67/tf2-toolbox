@@ -55,6 +55,7 @@ class WebChatStatusHelpTest(unittest.TestCase):
             self.assertEqual(state()["muted"], 0)
             a.chat_sent.append("FIRST BLOOD: 'Klaus' killed 'Ivan'")
             self.assertEqual(state()["posts"][-1], "FIRST BLOOD: 'Klaus' killed 'Ivan'")
+            self.assertEqual((state()["sent"], state()["refused"]), (a.chat_sent_count, a.chat_refused_count))
         Game().play(script)
 
     def test_status_and_help_pages(self):
@@ -63,22 +64,23 @@ class WebChatStatusHelpTest(unittest.TestCase):
             s = g.on_screen_thread(lambda: status_state(a))
             json.dumps(s)
             self.assertEqual([c["name"] for c in s["connections"]], ["TF2", "Steam", "History", "Lists"])
-            self.assertEqual(s["chat"], {"sent": a.chat_sent_count, "refused": a.chat_refused_count})
+            self.assertEqual([c["label"] for c in s["connections"]], ["TF2", "Steam", "Bans", "Cheater lists"])
             self.assertEqual([h["name"] for h in s["health"]], list(screens.HEALTH_ROWS))
-            self.assertEqual(s["keys"][0][0], a.cfg["toggle_key"])
+            self.assertNotIn("keys", s)  # the keys are on the Help page, the Mini HUD on Players
             hud = a.cfg["hud"]
             g.on_screen_thread(lambda: run_action(a, "hud_toggle", []))
             self.assertEqual(a.cfg["hud"], not hud)
             g.on_screen_thread(lambda: run_action(a, "hud_move", []))
-            self.assertTrue(g.on_screen_thread(lambda: status_state(a))["hud_moving"])
+            self.assertTrue(a.hud.moving)
             g.on_screen_thread(lambda: run_action(a, "hud_move", []))  # Done
-            self.assertFalse(g.on_screen_thread(lambda: status_state(a))["hud_moving"])
+            self.assertFalse(a.hud.moving)
 
             h = g.on_screen_thread(lambda: help_state(a))
             json.dumps(h)
             cards = {c["id"]: c for c in h["cards"]}
             self.assertEqual([r["usage"][0] for r in cards["keys"]["rows"]], [a.cfg["toggle_key"], "F8"])
-            self.assertEqual(len(cards["info"]["rows"]), 1 + len(INFO_COMMANDS))
+            self.assertEqual(cards["info"]["rows"], [])  # they are on the Chat page now
+            self.assertEqual(cards["info"]["link"]["page"], "Chat")
             self.assertIn("Example: !speak russian hello", cards["speak"]["rows"][0]["about"])
             self.assertEqual(len(cards["duels"]["rows"]), len(screens.DUEL_COMMANDS))
         Game().play(script)

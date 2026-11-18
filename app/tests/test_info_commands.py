@@ -26,7 +26,7 @@ class InfoCommandsTest(unittest.TestCase):
             asked = [("!check han", "[CHECK] Hank (BLU) | Sniper | 87/125 HP"),
                      ("!check all", "[CHECK] BLU: 1 Sniper"),  # dan is on RED: the other team is BLU
                      ("!medic", "[MEDIC] BLU: no Medic"),
-                     ("!top", "[TOP] RED: tomato 8/5 | BLU: Hank 18/16"),
+                     ("!top", "[TOP] Kills: RED 11 - 18 BLU | RED: tomato 8/5 | BLU: Hank 18/16"),
                      ("!kd Hank", "[KD] Hank (BLU) | 18 kills, 16 deaths"),
                      ("!hours hank", "[HOURS] Hank (BLU) | 2,621 hours in TF2"),
                      ("!cheaters", "[CHEATERS] Hank (1 VAC ban)"),

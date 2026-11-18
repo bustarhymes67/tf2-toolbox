@@ -65,24 +65,35 @@ class RateTests(OwnSources):
         self.assertNotIn("hs_rate", keys(cs.score(FakeApp(kills={SID: [9, 9]}), player())))
 
     def test_twenty_four_of_twenty_six_headshots_does(self):
+        # honest Snipers headshot ~72% of rifle kills (LR_RESEARCH s10): 24/26 is about x5, not proof
         sc = cs.score(FakeApp(kills={SID: [26, 24]}), player())
         clue = next(c for c in sc.clues if c.key == "hs_rate")
-        self.assertEqual(clue.lr, 30.0)  # the cap
+        self.assertAlmostEqual(clue.lr, 5.07, places=2)
         self.assertIn("24/26", clue.text)
         self.assertIn("by luck", clue.why)
-        self.assertGreater(sc.prob, 0.4)
+        self.assertIn("72%", clue.why)
+        self.assertGreater(sc.prob, cs.PRIOR)
 
     def test_a_normal_snipers_rate_moves_nothing(self):
         self.assertNotIn("hs_rate", keys(cs.score(FakeApp(kills={SID: [20, 11]}), player())))
 
-    def test_tail_lr_curve(self):
-        self.assertEqual(cs.tail_lr(0.2), 1.0)
-        self.assertEqual(cs.tail_lr(0.05), 1.0)
-        self.assertAlmostEqual(cs.tail_lr(0.01), 5.0)
-        self.assertEqual(cs.tail_lr(1e-9), 30.0)
-        # smooth: rarer luck never gives a smaller LR
-        lrs = [cs.tail_lr(10 ** -x) for x in range(0, 10)]
+    def test_headshot_bayes_factor_matches_the_research_examples(self):
+        # LR_RESEARCH s10, before the clamp: 10/10 x9.5, 15/15 x24, 18/20 x2.2, 24/26 x5.1, 45/50 x4.2, 30/30 x220
+        raw = lambda k, n: cs.betabin_lr(k, n, cs.HS_HONEST_MEAN, cs.HS_HONEST_CONC, cs.HS_CHEAT_MEAN, cs.HS_CHEAT_CONC)
+        for (k, n), want in {(10, 10): 9.5, (15, 15): 24, (18, 20): 2.2, (24, 26): 5.1, (45, 50): 4.2,
+                             (30, 30): 220}.items():
+            self.assertAlmostEqual(raw(k, n) / want, 1.0, delta=0.03, msg=f"{k}/{n}")
+        self.assertAlmostEqual(cs.hs_lr(24, 26), 5.07, places=2)
+        self.assertAlmostEqual(cs.hs_lr(15, 15), 23.8, places=1)
+        self.assertEqual(cs.hs_lr(30, 30), 30.0)  # the cap
+        for k, n in ((40, 50), (20, 30), (8, 10)):  # at or under an honest rate: never lowers the odds
+            self.assertEqual(cs.hs_lr(k, n), 1.0)
+        # more headshots of the same kills never give a smaller LR
+        lrs = [cs.hs_lr(k, 20) for k in range(0, 21)]
         self.assertEqual(lrs, sorted(lrs))
+        # the luck text's tail: a chance, smaller for more headshots
+        self.assertLess(cs.betabin_tail(26, 26, 0.72, 30), cs.betabin_tail(20, 26, 0.72, 30))
+        self.assertAlmostEqual(cs.betabin_tail(0, 26, 0.72, 30), 1.0)
 
     def test_bow_kills_use_the_bows_honest_rate(self):
         app = FakeApp(weapons={SID: Counter({"tf_projectile_arrow": 10})})
@@ -91,9 +102,16 @@ class RateTests(OwnSources):
         self.assertAlmostEqual(cs.honest_hs_rate(app, player()), (cs.HONEST_HS_BOW + cs.HONEST_HS_RIFLE) / 2)
 
     def test_random_crits(self):
-        self.assertNotIn("crit_rate", keys(cs.score(FakeApp(crits={SID: [12, 3]}), player())))
+        self.assertNotIn("crit_rate", keys(cs.score(FakeApp(crits={SID: [12, 1]}), player())))
         self.assertNotIn("crit_rate", keys(cs.score(FakeApp(crits={SID: [5, 5]}), player())))  # too few kills
-        self.assertEqual(keys(cs.score(FakeApp(crits={SID: [12, 12]}), player()))["crit_rate"], 30.0)
+        self.assertEqual(keys(cs.score(FakeApp(crits={SID: [12, 12]}), player()))["crit_rate"], 20.0)  # the cap
+        self.assertLess(keys(cs.score(FakeApp(crits={SID: [12, 3]}), player())).get("crit_rate", 1.0), 1.5)
+
+    def test_crit_test_leaves_out_melee_and_rapid_fire(self):
+        from player_flags import RANDOM_CRIT_WEAPONS
+        for weapon in ("fists", "bat", "minigun", "flamethrower", "smg", "pistol", "syringegun_medic", "sniperrifle"):
+            self.assertNotIn(weapon, RANDOM_CRIT_WEAPONS)
+        self.assertIn("tf_projectile_rocket", RANDOM_CRIT_WEAPONS)
 
 
 class CombineTests(OwnSources):
@@ -131,12 +149,12 @@ class CombineTests(OwnSources):
         old = time.time() - 9 * 365 * 86400
         sc = cs.score(FakeApp(), player(hours=1800, summary={"timecreated": old, "communityvisibilitystate": 3,
                                                              "profilestate": 1}))
-        self.assertLess(keys(sc)["experience"], 1)
+        self.assertLess(keys(sc)["account"], 1)
         self.assertLess(sc.prob, cs.PRIOR)
         new = cs.score(FakeApp(), player(hours=40, summary={"timecreated": time.time() - 10 * 86400,
                                                             "communityvisibilitystate": 3, "profilestate": 1}))
-        self.assertGreater(keys(new)["experience"], 1)
-        self.assertLessEqual(keys(new)["experience"], cs.EXPERIENCE_RANGE[1])  # one clue, not two multiplied freely
+        self.assertGreater(keys(new)["account"], 1)
+        self.assertLessEqual(keys(new)["account"], cs.ACCOUNT_RANGE[1])  # one clue, not two multiplied freely
 
     def test_lists_are_one_clue_growing_with_the_number_of_lists(self):
         def lr(n):
@@ -148,7 +166,9 @@ class CombineTests(OwnSources):
         self.assertLess(lr(2), lr(3))
         self.assertEqual(lr(3), lr(6))
         racist = FakeApp(lists={SID: {"attributes": {"racist"}, "sources": ["a", "b"]}})
-        self.assertEqual(cs.score(racist, player()).clues, [])
+        clue = keys(cs.score(racist, player()))  # racist only: shown, but it moves nothing
+        self.assertEqual(clue, {"lists": 1.0})
+        self.assertAlmostEqual(cs.score(racist, player()).prob, cs.PRIOR)
 
     def test_same_key_from_two_sources_counts_once(self):
         extra = cs.register(lambda app, p: [cs.Clue("lists", 2.0, "other source", "test")])
@@ -164,7 +184,9 @@ class CombineTests(OwnSources):
             raise ValueError("on purpose (this is the test)")
         cs.register(broken)
         try:
-            self.assertEqual(cs.score(FakeApp(marks={str(SID): {"reason": "cheater"}}), player()).band, "Likely")
+            sc = cs.score(FakeApp(marks={str(SID): {"reason": "cheater"}}), player())
+            self.assertEqual([c.key for c in sc.clues], [cs.MARK_KEY])  # the working sources still count
+            self.assertAlmostEqual(sc.odds, cs.to_odds(cs.PRIOR) * cs.MARK_LR)
         finally:
             cs.CLUE_SOURCES.remove(broken)
 
@@ -185,11 +207,11 @@ class CombineTests(OwnSources):
     def test_breakdown_words(self):
         app = FakeApp(lists={SID: {"attributes": {"cheater"}, "sources": ["a", "b"]}}, kills={SID: [26, 24]})
         b = cs.breakdown(cs.score(app, player()))
-        self.assertEqual(b["start"], "Start: 3% of casual players cheat (odds 1 : 32)")
-        self.assertEqual([r["lr"] for r in b["rows"]], ["×40", "×30"])
+        self.assertEqual(b["start"], "Start: 2% of casual players cheat (odds 1 : 49)")
+        self.assertEqual([r["lr"] for r in b["rows"]], ["×100", "×5.1"])
         self.assertEqual(b["band"], "Likely")
         self.assertEqual(b["words"], "LIKELY CHEATER")
-        self.assertTrue(b["end"].startswith("= odds 37 : 1"))
+        self.assertTrue(b["end"].startswith("= odds 10 : 1"))
         self.assertIn("LIKELY CHEATER", cs.explain(cs.score(app, player())))
         self.assertEqual(cs.lr_text(0.5), "×0.5")
         self.assertEqual(cs.lr_text(2.5), "×2.5")
@@ -223,8 +245,8 @@ class PolishTests(OwnSources):
         app = FakeApp(flags={SID: [(2, "92% headshots")]})
         reasons = web_players.reasons_json(app, player(), cs.score(app, player()))
         texts = [r["text"] for r in reasons]
-        self.assertEqual(texts[0], "92% headshots")  # the flag row stays, with its (small) multiplier
-        self.assertEqual(reasons[0]["lr"], "×1.06")
+        # the flag's clue keeps its own line, with its (small) multiplier
+        self.assertEqual(next(r["lr"] for r in reasons if r["text"] == "24/26 Sniper headshots"), "×1.06")
         self.assertIn("spawn", texts)
         self.assertNotIn("1.8 kills/min", texts)
         self.assertNotIn("bot-like", texts)
@@ -264,9 +286,8 @@ class PolishTests(OwnSources):
             js = f.read()
         with open(os.path.join(here, "web", "pages", "players.css"), encoding="utf-8") as f:
             css = f.read()
-        self.assertIn("PLAYER_MIN = 190", js)
-        self.assertIn("return `${band}${c.tag", js)  # the band chip before the stamp: it stays when narrow
-        self.assertIn('c === "Flags" ? 0', js)  # FLAGS takes what is left
+        self.assertIn('c === "Player" ? 0', js)  # PLAYER takes what is left: FLAGS is only a stamp and a chip
+        self.assertIn('<span class="pl-stamp t-${t[1] || "weak"}">', js)  # no reason text in the column
         self.assertIn('title="${esc(c.t)}"', js)  # the full name on hover
         self.assertIn(".pl-pw .pn{min-width:0;overflow:hidden;text-overflow:ellipsis", css)
 
@@ -296,17 +317,18 @@ class WebStateTests(unittest.TestCase):
             self.assertEqual(row["score"]["band"], "Likely")
             self.assertEqual(row["score"]["short"], "LIKELY")
             rows_ = {r["key"]: r for r in row["score"]["rows"]}
-            self.assertLessEqual({"lists", "hs_rate", "experience"}, set(rows_))
+            self.assertLessEqual({"lists", "hs_rate", "account"}, set(rows_))
             self.assertTrue(rows_["lists"]["text"].startswith("on 2 cheater lists"))
             self.assertEqual(row["score"]["rows"][0]["key"], "lists")  # the biggest first
             me = next(r for t in s["teams"] for r in t["rows"] if r.get("sid") == str(ME))
             self.assertIsNone(me["score"])
             p = s["panel"]
             self.assertEqual(p["score"]["words"], "LIKELY CHEATER")
-            lrs = {r["text"]: r["lr"] for r in p["reasons"]}
-            self.assertEqual(lrs["on 2 lists (cheater)"], "×40")
-            self.assertEqual(lrs["92% headshots (24/26 sniper kills)"], "×30")
-            self.assertEqual(lrs["1,800 hours"], "×0.7")  # a clue no flag shows: added under the flags
+            lrs = {r["key"]: r["lr"] for r in p["reasons"]}
+            self.assertEqual(lrs["lists"], "×100")  # two lists of different families
+            self.assertEqual(lrs["hs_rate"], "×5.1")
+            self.assertEqual(lrs["account"], "×0.64")  # 1,800 hours; a clue no flag shows has its line too
+            self.assertEqual(p["reasons"][0]["key"], "lists")  # the biggest first
             counts = {f["key"]: f["n"] for f in s["filters"]}
             self.assertEqual(counts["cheaters"], 1)
             # The Cheaters chip: the score alone (no red flag) is enough

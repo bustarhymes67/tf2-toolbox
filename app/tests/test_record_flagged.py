@@ -32,7 +32,7 @@ class RecordFlaggedTest(unittest.TestCase):
                 run(lambda: tf2_lobby_scanner.App.record_flagged_tick(a, now))
 
             now = time.time()
-            self.assertEqual(run(lambda: cheat_state(a)["record"]), "Recording: not recording")
+            self.assertEqual(run(lambda: cheat_state(a)["recording"]), {"on": False, "text": "Not recording"})
             tick(now)
             self.assertEqual(ds_commands(g), [])  # nobody flagged
 
@@ -49,7 +49,7 @@ class RecordFlaggedTest(unittest.TestCase):
                 tick(now + later)
             self.assertEqual(ds_commands(g), ["ds_record"])  # once, however many ticks
             s = run(lambda: cheat_state(a))
-            self.assertEqual(s["record"], "Recording: on — flagged player in the match")
+            self.assertEqual(s["recording"], {"on": True, "text": "Recording: flagged player in the match"})
             self.assertTrue(s["recording"])
 
             # Hank leaves (unmarked here): stops after a minute without anyone flagged, not before.
@@ -86,11 +86,11 @@ class RecordFlaggedTest(unittest.TestCase):
             a.cfg["record_only_flagged"] = False
             tick(time.time() + 1000)
             self.assertEqual(ds_commands(g).count("ds_record"), 3)
-            self.assertEqual(run(lambda: cheat_state(a)["record"]), "Recording: every match (TF2 records by itself)")
+            self.assertEqual(run(lambda: cheat_state(a)["recording"]), None)  # every match: the switch says it
             a.cfg["record_only_flagged"], a.cfg["demo_check"] = True, False
             tick(time.time() + 1000)
             self.assertEqual(ds_commands(g).count("ds_record"), 3)
-            self.assertEqual(run(lambda: cheat_state(a)["record"]), "Recording: off (the cheat check is off)")
+            self.assertEqual(run(lambda: cheat_state(a)["recording"]), None)  # cheat check off: the switch says it
             a.cfg["demo_check"] = True
             tick(time.time() + 1000)
             self.assertEqual(ds_commands(g).count("ds_record"), 4)

@@ -51,24 +51,24 @@
 
   function chatSkeleton(root, s) {
     root.innerHTML = `
-      <div class="ph"><h1>Chat</h1><span class="crumb">// what the scanner says in game chat</span></div>
+      <div class="ph"><h1>Chat</h1><span class="crumb">// what the toolbox says in game chat</span></div>
       <div class="pad">
         <div class="row" style="align-items:flex-start">
           <div class="pnl brk" id="chat-sets">
             ${s.settings.map(x => `
             <div class="set" data-key="${esc(x.key)}"><div class="st"><b></b><span>${esc(x.about)}</span></div>
               <span class="sw" data-on="0" role="switch" tabindex="0"></span><span class="swtxt">OFF</span></div>`).join("")}
-            <div class="set" data-key="muted"><div class="st"><b>!speak: muted players</b><span>Players you muted in their panel (Mute !speak). Click to unmute them all.</span></div><span class="val"></span></div>
+            <div class="set" data-key="muted"><div class="st"><b>!speak: blocked players</b><span>Players whose !speak you blocked in their panel (Block their !speak). Click to let them all use it again.</span></div><span class="val"></span></div>
           </div>
           <div class="pnl" style="flex:.7">
-            <div class="pnl-h"><span class="lab">Last posts</span></div>
+            <div class="pnl-h"><span class="lab">Last posts</span><span class="num" id="chat-count" title="This session: lines that reached the chat, and lines the server refused (TF2's spam limit)"></span></div>
             <div class="pnl-b chatlog" id="chat-posts"></div>
           </div>
         </div>
         <div class="pnl">
-          <div class="pnl-h"><span class="lab">Chat commands</span><span class="num" style="margin-left:auto;font-size:11px;color:var(--tx3)">What anyone can type in chat. Click one to switch it off or on. The Help page says what each one does.</span></div>
+          <div class="pnl-h"><span class="lab">Chat commands</span><span class="phint">What anyone can type in chat. Hover one to see what it does, click it to switch it off or on.</span></div>
           <div class="pnl-b"><div class="pills" id="chat-pills">
-            ${s.commands.map(c => `<button class="pill" data-id="${esc(c.id)}">${pillUsage(c.usage)}<span class="o">OFF</span></button>`).join("")}
+            ${s.commands.map(c => `<button class="pill" data-id="${esc(c.id)}" aria-label="${esc(c.usage.join(" ").trim())}: ${esc(c.about)}">${pillUsage(c.usage)}<span class="o">OFF</span><span class="ptip" role="tooltip">${esc(c.about)}</span></button>`).join("")}
           </div></div>
         </div>
       </div>`;
@@ -101,7 +101,7 @@
       setSwitch(row.querySelector(".sw"), x.on);
     }
     const val = root.querySelector('.set[data-key="muted"] .val');
-    setText(val, s.muted ? `${s.muted} muted` : "nobody");
+    setText(val, s.muted ? `${s.muted} blocked` : "nobody");
     val.classList.toggle("on", !!s.muted);
     for (const c of s.commands) {
       const p = root.querySelector(`.pill[data-id="${c.id}"]`);
@@ -109,82 +109,70 @@
       setText(p.querySelector(".o"), c.on ? "ON" : "OFF");
     }
     setHTML(document.getElementById("chat-posts"), s.posts.length
-      ? s.posts.map(t => `<div><span class="a">[scanner]</span> ${esc(t)}</div>`).join("")
+      ? s.posts.map(t => `<div><span class="a">[toolbox]</span> ${esc(t)}</div>`).join("")
       : `<div class="t">Nothing said in chat yet this session.</div>`);
+    const count = document.getElementById("chat-count");
+    setText(count, `${s.sent} sent · ${s.refused} refused`);
+    count.classList.toggle("bad", s.refused > 0);
   });
 
   // ---------------------------------------------------------------- Status
   const DOTS = {ok: "", warn: "warn", off: "off", bad: "red"};
   const ST = {ok: "ok", warn: "wn", off: "off", bad: "bd"};
 
+  // One compact row of two cards: the connections, and is everything working.
   LS.page("Status", s => {
     const root = document.getElementById("p-status");
     if (!root || s.error) return;
     if (!root._built) {
       root._built = true;
       root.innerHTML = `
-        <div class="ph"><h1>Status</h1><span class="crumb">// system check</span><span style="flex:1"></span>
-          <span class="sw" id="hud-sw" data-on="0" role="switch" tabindex="0" title="One thin line at the top of your screen: the enemy line-up, their Medics (MEDIC DOWN - PUSH) and their Spies."></span><span class="swtxt">OFF</span><span style="font-weight:500">Mini HUD</span><button class="btn sm" id="hud-move" title="Press, drag the line where you can read it, then press Done.">Move</button></div>
+        <div class="ph"><h1>Status</h1><span class="crumb">// is everything working</span></div>
         <div class="pad">
-          <div><span class="lab">Connections</span></div>
-          <div class="conn" id="st-conn" style="margin-top:-8px"></div>
-          <div class="row" style="align-items:flex-start">
-            <div style="display:flex;flex-direction:column;gap:16px">
-              <div class="pnl">
-                <div class="pnl-h"><span class="lab">Chat this session</span></div>
-                <div class="kpis two" id="st-chat"></div>
-              </div>
-              <div class="pnl brk">
-                <div class="pnl-h"><span class="lab">Keys</span></div>
-                <div class="keys" id="st-keys"></div>
-              </div>
+          <div class="srow">
+            <div class="pnl brk">
+              <div class="pnl-h"><span class="lab">Connections</span><span class="num sok" id="st-conn-ok"></span></div>
+              <div class="slist" id="st-conn"></div>
             </div>
             <div class="pnl">
-              <div class="pnl-h"><span class="lab">Is everything working?</span><span class="num" id="st-ok" style="margin-left:auto;font-size:11px"></span></div>
-              <div id="st-health"></div>
+              <div class="pnl-h"><span class="lab">Is everything working?</span><span class="num sok" id="st-ok"></span></div>
+              <div class="slist" id="st-health"></div>
             </div>
           </div>
         </div>`;
-      const sw = document.getElementById("hud-sw");
-      const flip = () => { setSwitch(sw, sw.dataset.on !== "1"); LS.act("hud_toggle"); };
-      sw.onclick = flip;
-      keyable(sw, flip);
-      document.getElementById("hud-move").onclick = () => LS.act("hud_move");
     }
-    setSwitch(document.getElementById("hud-sw"), s.hud);
-    const move = document.getElementById("hud-move");
-    setText(move, s.hud_moving ? "Done" : "Move");
-    move.classList.toggle("pri", s.hud_moving);
+    const line = (dot, name, text, sub) =>
+      `<div class="sline"><span class="dot ${DOTS[dot] ?? "red"}"></span><b>${esc(name)}</b>` +
+      `<span class="st ${ST[dot] ?? "bd"}">${esc(text)}${sub ? `<small>${esc(sub)}</small>` : ""}</span></div>`;
+    // Only a connection that isn't OK says what it is needed for.
     setHTML(document.getElementById("st-conn"), s.connections.map(c =>
-      `<div><div class="top"><span class="dot ${DOTS[c.dot] ?? "red"}"></span>${esc(c.name)}</div>` +
-      `<div class="st ${ST[c.dot] ?? "bd"}">${esc(c.state)}</div><div class="sub">${esc(c.about)}</div></div>`).join(""));
-    setHTML(document.getElementById("st-chat"),
-      `<div><b>${s.chat.sent}</b><span>Sent</span></div><div><b>${s.chat.refused}</b><span>Refused by the server</span></div>`);
-    setHTML(document.getElementById("st-keys"), s.keys.map(([k, about]) =>
-      `<div class="keyrow"><span class="kbd">${esc(k)}</span>${esc(about)}</div>`).join(""));
+      line(c.dot, c.label || c.name, c.state, c.dot === "ok" ? "" : `needed for ${c.about}`)).join(""));
+    const bad = s.connections.filter(c => c.dot !== "ok").length;
+    const cok = document.getElementById("st-conn-ok");
+    setText(cok, bad ? `${s.connections.length - bad} / ${s.connections.length} OK` : "all OK");
+    cok.classList.toggle("w", !!bad);
     const ok = document.getElementById("st-ok");
     setText(ok, `${s.health_ok} / ${s.health.length} OK`);
-    ok.style.color = s.health_ok === s.health.length ? "var(--grn)" : "#ffb070";
-    setHTML(document.getElementById("st-health"), s.health.map(h =>
-      `<div class="chk"><span class="dot ${DOTS[h.level] ?? "off"}"></span>${esc(h.name)}` +
-      `<span class="r ${h.level === "warn" ? "w" : h.level === "bad" ? "b" : ""}">${esc(h.text)}</span></div>`).join(""));
+    ok.classList.toggle("w", s.health_ok !== s.health.length);
+    setHTML(document.getElementById("st-health"), s.health.map(h => line(h.level, h.name, h.text, "")).join(""));
   });
 
   // ---------------------------------------------------------------- Help
-  function helpCard(c) {
-    const cls = c.id === "keys" ? "pnl hc brk" : c.id === "info" ? "pnl hc wide" : "pnl hc";
-    const body = c.id === "info" ? ` style="display:grid;grid-template-columns:1fr 1fr;column-gap:24px"` : "";
+  // A short manual: one scrollable column of sections.
+  function helpSection(c) {
     let rows = "", eg = "";
     for (const r of c.rows) {
       let about = r.about;
       const m = about.match(/^(.*?)\s*Example: (\S+ \S+)(.*)$/);  // "!speak russian hello" goes in its own box
-      if (m) { about = m[1]; eg = `<div class="eg"><b>${esc(m[2])}</b>${esc(m[3])}</div>`; }
+      if (m) { about = m[1]; eg = `<div class="eg">Example: <b>${esc(m[2])}</b>${esc(m[3])}</div>`; }
       rows += r.usage[0] ? `<div class="cmd"><code>${usage(r.usage)}</code><span>${esc(about)}</span></div>`
                          : `<div class="hp">${esc(about)}</div>`;
     }
-    const note = c.note ? `<div class="hnote">${esc(c.note)}</div>` : "";
-    return `<div class="${cls}" data-card="${esc(c.id)}"><div class="pnl-h"><span class="lab">${esc(c.title)}</span></div>` +
-           `<div class="pnl-b"${body}>${rows}${eg}</div>${note}</div>`;
+    if (c.link) rows += `<p class="hp">${esc(c.link.text)}</p>` +
+                        `<button class="btn sm hlink" data-page="${esc(c.link.page)}">Open the ${esc(c.link.page)} page` +
+                        `<svg viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></svg></button>`;
+    const note = c.note ? `<p class="hnote">${esc(c.note)}</p>` : "";
+    return `<section class="hsec" data-card="${esc(c.id)}"><h2>${esc(c.title)}</h2>${rows}${eg}${note}</section>`;
   }
 
   LS.page("Help", s => {
@@ -193,8 +181,12 @@
     if (!root._built) {
       root._built = true;
       root.innerHTML = `<div class="ph"><h1>Help</h1><span class="crumb">// keys and chat commands</span></div>` +
-                       `<div class="pad"><div class="hgrid" id="help-grid"></div></div>`;
+                       `<div class="pad"><div class="pnl brk hman" id="help-man"></div></div>`;
+      root.addEventListener("click", e => {  // "Open the Chat page": where the information commands are
+        const link = e.target.closest(".hlink");
+        if (link) LS.go(link.dataset.page);
+      });
     }
-    setHTML(document.getElementById("help-grid"), s.cards.map(helpCard).join(""));
+    setHTML(document.getElementById("help-man"), s.cards.map(helpSection).join(""));
   });
 })();

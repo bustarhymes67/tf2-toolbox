@@ -1,25 +1,34 @@
-"""The mini HUD: one thin line over the game, also while the scanner's window is hidden (F9). It
+"""The mini HUD: one thin line over the game, also while the toolbox window is hidden (F9). It
 shows, for the team you play against: its class line-up, its Medics (and "MEDIC DOWN - PUSH" the
 moment one dies) and its Spies. Clicks pass through it to the game. All from TF2's scoreboard,
 never the game's memory."""
 
+import re
 import time
 import tkinter as tk
+import tkinter.font as tkfont
 from collections import Counter
 
 from tf2_translator import set_click_through
-from settings import ACCENT, BG, BORDER, FONT_LABEL, GOOD, KEY_COLOR, MUTED, TEAM_ACCENT, TEXT, WAITING, save_config
+from settings import (ACCENT, BG, BORDER, FONT_LABEL, GOOD, KEY_COLOR, MUTED, TEAM_ACCENT, TEXT, WAITING, mono_family,
+                      save_config)
 
 CLASS_ORDER = ["Scout", "Soldier", "Pyro", "Demo", "Heavy", "Engineer", "Medic", "Sniper", "Spy"]
 SHORT_CLASS = {"Engineer": "Engi"}
 ALERT_SECONDS = 6       # how long "MEDIC DOWN" and a line-up change stand out
 TEAM_COLOR = TEAM_ACCENT
 WARN = WAITING
-SEP = "   ·   "
+SEP = "   ·   "         # between the strip's parts; drawn as a thin line between boxes
 
-
+# The Tactical look of the main window: a near-black bar, thin lines, the team as a filled tag,
+# numbers in a monospace font and call-outs in the label font in capitals.
 BACKDROP = BG           # the dark box behind the text, so it reads on any map
 MOVE_EDGE = ACCENT      # its outline while you move it
+DIVIDER = "#1c242e"     # the thin line between the strip's parts
+TAG_TEXT = "#07090c"    # dark text on the team's coloured tag
+NUMBER = "#ffffff"      # the counts in the line-up stand out a little
+MOVE_TEXT = "Drag me where you want me, then press Done on the Players page"
+NUMBER_RE = re.compile(r"(\d+)")
 
 
 def default_place(root):
@@ -27,12 +36,22 @@ def default_place(root):
     return 10, 10
 
 
+def spaced(text):
+    """Capitals with a little room between the letters, like the main window's labels."""
+    return "\u200a".join(text.upper())
+
+
 class HudStrip:
-    """A window with one line of coloured parts on a dark box. Clicks pass through it to the game,
-    except while you move it."""
+    """A window with one line of boxes on a dark bar: the enemy team as a coloured tag, then each
+    part between thin lines. Clicks pass through it to the game, except while you move it."""
 
     def __init__(self, root, font, place):
-        self.font = font
+        self.font = font    # the label font: the team tag and call-outs
+        mono = mono_family(root)
+        size = font[1] if isinstance(font, tuple) and len(font) > 1 else 11
+        self.mono = tkfont.Font(root, family=mono, size=size - 1)
+        self.mono_bold = tkfont.Font(root, family=mono, size=size - 1, weight="bold")
+        self.label = tkfont.Font(root, family=font[0] if isinstance(font, tuple) else FONT_LABEL, size=size)
         self.shown = None   # what's drawn now: (text, colour) parts
         self.moving = False
         self.win = win = tk.Toplevel(root)
@@ -69,11 +88,10 @@ class HudStrip:
         self.moving = moving
         set_click_through(self.win, not moving)
         shown, self.shown = self.shown, None
-        self.show(shown or (("Drag me where you want me, then press Done on the Status page", TEXT),))
+        self.show(shown or ((MOVE_TEXT, TEXT),))
 
     def show(self, parts):
-        """Draws the parts from the left on a dark box, each in its colour. No parts (and not
-        moving): nothing is drawn."""
+        """Draws the parts from the left on a dark bar. No parts (and not moving): nothing is drawn."""
         parts = tuple(parts)
         if parts == self.shown:
             return
@@ -83,14 +101,50 @@ class HudStrip:
         if not parts and not self.moving:
             return
         if not parts:
-            parts = (("Drag me where you want me, then press Done on the Status page", TEXT),)
-        x, pad = 10, 10
+            parts = ((MOVE_TEXT, TEXT),)
+        boxes = [[]]                       # the parts between the separators
         for text, colour in parts:
-            item = c.create_text(x, self.h // 2, text=text, anchor="w", font=self.font, fill=colour)
+            if text == SEP:
+                boxes.append([])
+            else:
+                boxes[-1].append((text.strip(), colour))
+        top, bottom, mid = 2, self.h - 3, self.h // 2
+        x = 1
+        for n, box in enumerate(b for b in boxes if b):
+            if n == 0 and box[0][0] in set(TEAM_COLOR) | {"ENEMY"}:
+                (team, colour), box = box[0], box[1:]
+                tag = c.create_text(x + 10, mid, text=spaced(team), anchor="w", font=self.label, fill=TAG_TEXT)
+                right = c.bbox(tag)[2] + 10
+                c.tag_lower(c.create_rectangle(x, top, right, bottom, fill=colour, outline=""))
+                x = right
+                if not box:
+                    continue
+            elif n:
+                c.create_line(x, top + 1, x, bottom, fill=DIVIDER)
+            x += 10
+            for i, (text, colour) in enumerate(box):
+                x = self._draw_part(x + (8 if i else 0), mid, text, colour)
+            x += 10
+        right = min(x, self.w - 2)
+        edge = c.create_rectangle(0, top - 1, right, bottom, fill=BACKDROP,
+                                  outline=MOVE_EDGE if self.moving else BORDER, width=2 if self.moving else 1)
+        c.tag_lower(edge)
+
+    def _draw_part(self, x, y, text, colour):
+        """One part: call-outs in capitals in the label font, the rest in monospace with the counts
+        brighter. Returns where the next part starts."""
+        c = self.canvas
+        if text.isupper() and len(text) > 3:   # "MEDIC DOWN - PUSH"
+            item = c.create_text(x, y, text=spaced(text), anchor="w", font=self.label, fill=colour)
+            return c.bbox(item)[2]
+        for i, piece in enumerate(NUMBER_RE.split(text)):
+            if not piece:
+                continue
+            bright = i % 2 and colour == TEXT
+            item = c.create_text(x, y, text=piece, anchor="w", font=self.mono_bold if bright else self.mono,
+                                 fill=NUMBER if bright else colour)
             x = c.bbox(item)[2]
-        box = c.create_rectangle(0, 0, min(x + pad, self.w - 1), self.h - 1, fill=BACKDROP,
-                                 outline=MOVE_EDGE if self.moving else BORDER, width=2 if self.moving else 1)
-        c.tag_lower(box)
+        return x
 
 
 class HudMixin:
@@ -167,14 +221,13 @@ class HudMixin:
         return (self.board.get(p.sid) or {}).get("m_bAlive") != "false"
 
     def toggle_hud(self):
-        """The Mini HUD card on the Status page."""
+        """The Mini HUD switch on the Players page."""
         self.cfg["hud"] = not self.cfg["hud"]
         save_config(self.cfg)
-        self.update_hud_button()
         self.hud_tick()
 
     def toggle_hud_move(self):
-        """The Move card on the Status page: drag the strip, then press it again (Done) to keep the place."""
+        """The Move button next to it: drag the strip, then press it again (Done) to keep the place."""
         moving = not self.hud.moving
         self.hud.set_moving(moving)
         if not moving:
@@ -182,14 +235,9 @@ class HudMixin:
             save_config(self.cfg)
             self.hud.shown = None
             self.hud_tick()
-        self.hud_move_button.show("Done" if moving else "Move", moving)
 
     def reset_hud_place(self):
         """Back in the top-left corner, where it starts."""
         self.cfg["hud_x"] = self.cfg["hud_y"] = None
         save_config(self.cfg)
         self.hud.place(*default_place(self.root))
-
-    def update_hud_button(self):
-        on = self.cfg["hud"]
-        self.hud_button.show("ON" if on else "OFF", on)

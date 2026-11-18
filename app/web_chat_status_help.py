@@ -24,10 +24,18 @@ CHAT_SETTINGS = (
      "toggle_idle_rejoin", "idle_rejoin", "idle"),
 )
 CHAT_TOGGLES = {key: method for key, _, _, method, _, _ in CHAT_SETTINGS}
-# The Status page's connection cards: what each one is for (the Tk page's words).
-CONNECTIONS = (("TF2", "rcon_state", "RCON"), ("Steam", "api_state", "bans, hours, age"),
-               ("History", "sh_state", "server bans"), ("Lists", "lists_state", "cheater lists"))
-LAST_POSTS = 8  # lines of the scanner's own chat shown on the Chat page
+# The Status page's connections: (name, App attribute, label, what it is for). The label is the
+# title bar light's (History -> Bans, Lists -> Cheater lists); the name stays the data key.
+CONNECTIONS = (("TF2", "rcon_state", "TF2", "RCON"), ("Steam", "api_state", "Steam", "bans, hours, age"),
+               ("History", "sh_state", "Bans", "server bans"), ("Lists", "lists_state", "Cheater lists", "cheater lists"))
+LAST_POSTS = 8  # lines of the toolbox's own chat shown on the Chat page
+WHO_ABOUT = "A player's summary and stats, in two messages. Part of a name works: !who iva finds Ivan."
+SPEAK_ABOUT = "Says a message in another language in chat, like !speak russian hello. More on the Help page."
+
+
+def page_names(text):
+    """The sidebar calls the Duels page HoovyGPT: the shared texts (screens.py) still say Duels page."""
+    return text.replace("the Duels page", "the HoovyGPT page")
 
 
 def beef_title(cfg):
@@ -47,15 +55,18 @@ def chat_state(app):
     settings = [{"key": key, "title": title or beef_title(cfg), "about": about, "on": bool(cfg[setting]),
                  "example": example} for key, title, about, _, setting, example in CHAT_SETTINGS]
     muted = len(cfg["speak_muted"])
-    commands = [{"id": "who", "usage": ["!who", "<name>"], "on": bool(cfg["who_command"])},
-                {"id": "speak", "usage": ["!speak", ""], "on": bool(cfg["translate_command"])}]
-    commands += [{"id": f"info:{name}", "usage": command(usage), "on": bool(cfg["info_commands"].get(name, True))}
-                 for name, (usage, _) in INFO_COMMANDS.items()]
+    # Each pill's hover says what the command does (the Help page used to list them all again).
+    commands = [{"id": "who", "usage": ["!who", "<name>"], "on": bool(cfg["who_command"]), "about": WHO_ABOUT},
+                {"id": "speak", "usage": ["!speak", ""], "on": bool(cfg["translate_command"]), "about": SPEAK_ABOUT}]
+    commands += [{"id": f"info:{name}", "usage": command(usage), "on": bool(cfg["info_commands"].get(name, True)),
+                  "about": about} for name, (usage, about) in INFO_COMMANDS.items()]
     return {
         "settings": settings,
         "muted": muted,
         "commands": commands,
         "posts": list(app.chat_sent)[-LAST_POSTS:],
+        "sent": app.chat_sent_count,         # this session, under Last posts
+        "refused": app.chat_refused_count,
         "examples": {key: [list(line) for line in lines] for key, lines in CHAT_EXAMPLES.items()},
         "preview_delay": PREVIEW_DELAY,
         "preview_step": PREVIEW_STEP,
@@ -86,19 +97,19 @@ def _unmute_all_speak(app):
 
 @page("Status")
 def status_state(app):
-    health = [{"name": name, "level": level, "text": text} for name, level, text in app.feature_health()]
+    """One compact row of two cards: the connections (the ones that aren't OK say what they are
+    for) and Is everything working?. The keys are on the Help page, the chat counts under the Chat page's
+    Last posts, and the Mini HUD switch on the Players page (it calls hud_toggle / hud_move below)."""
+    health = [{"name": name, "level": level, "text": page_names(text)} for name, level, text in app.feature_health()]
     return {
-        "hud": bool(app.cfg["hud"]),
-        "hud_moving": bool(app.hud.moving),
-        "connections": [{"name": name, "state": getattr(app, attr), "dot": light(getattr(app, attr)), "about": about}
-                        for name, attr, about in CONNECTIONS],
-        "chat": {"sent": app.chat_sent_count, "refused": app.chat_refused_count},
+        "connections": [{"name": name, "label": label, "state": getattr(app, attr), "dot": light(getattr(app, attr)),
+                         "about": about} for name, attr, label, about in CONNECTIONS],
         "health": health,
         "health_ok": sum(row["level"] == "ok" for row in health),
-        "keys": [[app.cfg["toggle_key"], "Show / hide this window"], ["F8", "Move translations"]],
     }
 
 
+# The Mini HUD's switch and Move button (on the Players page's top bar).
 @action("hud_toggle")
 def _hud_toggle(app):
     app.toggle_hud()
@@ -111,19 +122,23 @@ def _hud_move(app):
 
 @page("Help")
 def help_state(app):
-    rows = lambda pairs: [{"usage": command(usage), "about": about} for usage, about in pairs]
-    info = [("!who <name>", "A player's summary and stats, in two messages.")] + list(INFO_COMMANDS.values())
+    """A short manual, one column of sections: the keys, then the chat commands that have more to
+    them (translate, HoovyGPT, duels), then a pointer to the Chat page. The information commands
+    (!who, !check, ...) are there: one switch each, and what it does when you hover it."""
+    rows = lambda pairs: [{"usage": command(usage), "about": page_names(about)} for usage, about in pairs]
     return {"cards": [
         {"id": "keys", "title": "Keys (work in the game)",
-         "rows": rows(((app.cfg["toggle_key"], "Show or hide the scanner window."),
-                       ("F8", "Unlock the translations to move them with the mouse. F8 again locks them."))),
+         "rows": rows(((app.cfg["toggle_key"], "Show or hide the toolbox window."),
+                       (app.cfg["translator_toggle_key"], "Unlock the translations to move them with the mouse. Press it again to lock them."))),
          "note": ""},
-        {"id": "info", "title": "Information", "rows": rows(info),
-         "note": "Switch each one off or on on the Chat page. Part of a name is enough: !who iva finds Ivan."},
         {"id": "speak", "title": "Translate", "rows": rows(SPEAK_COMMANDS),
          "note": "Switch !speak off or on on the Chat page. "
-                 "Mute one player's !speak in their panel (click them on the Players page)."},
+                 "Block one player's !speak in their panel (click them on the Players page)."},
         {"id": "heavy", "title": "HoovyGPT", "rows": rows(HEAVY_COMMANDS),
-         "note": "Switch it on with HoovyGPT + Duels on the Duels page."},
+         "note": "Switch it on with HoovyGPT + Duels on the HoovyGPT page."},
         {"id": "duels", "title": "Duels", "rows": rows(DUEL_COMMANDS), "note": "Duels work while HoovyGPT + Duels is on."},
+        {"id": "info", "title": "Other chat commands", "rows": [],
+         "link": {"page": "Chat", "text": "!who, !check, !top and the other information commands: "
+                                          "switch them and see what each one does on the Chat page."},
+         "note": ""},
     ]}

@@ -1,54 +1,139 @@
-/* cheat_duels: page styles beyond the shared ones in index.html */
+/* cheat_duels: page styles beyond the shared ones in index.html.
+   Visual pass: fonts by role (--f-head caps labels and buttons, --f-num numbers only, --f-text the rest),
+   red (--bad) only for a STRONG find, spacing 8 / 16 / 24, corner brackets only on each page's main
+   panel (the FOUND bar, the HoovyGPT switch), grey track for OFF switches, hovers fade in 100 ms. */
+
+#p-cheat [hidden],#p-duels [hidden]{display:none!important}
+#p-cheat,#p-duels{font-family:var(--f-text,"Segoe UI",system-ui,sans-serif)}
+#p-cheat .num,#p-duels .num{font-family:var(--f-num,Consolas,ui-monospace,monospace)}
+
+/* ---- shared by both pages: spacing on the 8 / 16 / 24 grid ---- */
+/* (.pnl-h, .pnl-b, .set, .ph, .pad are on the grid in index.html already) */
+#p-cheat .dt th,#p-cheat .dt td,#p-duels .dt th,#p-duels .dt td{padding:0 var(--g2,16px)}
+#p-cheat .lab,#p-duels .lab,#p-cheat .btn,#p-duels .btn,#p-duels .seg button,#p-duels .bigsw b{font-family:var(--f-head,"Bahnschrift","Arial Narrow",sans-serif)}
+
+/* switches: the grey OFF track and teal ON come from index.html's shared .sw */
+#p-cheat .sw,#p-duels .sw{cursor:pointer}
+
+/* hovers fade in ~100 ms */
+#p-cheat :is(.btn,.li,.det,.set,.xmenu button),#p-duels :is(.btn,.seg button,.model,.set){
+  transition:background-color var(--fade,.1s),color var(--fade,.1s),border-color var(--fade,.1s),box-shadow var(--fade,.1s),opacity var(--fade,.1s)}
+@keyframes cd-fade{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion: reduce){
+  #p-cheat *,#p-duels *{transition:none!important;animation:none!important}
+}
 
 /* ---- Cheat check ---- */
+/* The status line: only what the switches don't say; the earlier checks behind "Show N earlier". */
+#p-cheat .lastchk{flex-wrap:wrap;gap:8px;font-family:var(--f-text,"Segoe UI",system-ui,sans-serif);font-size:13px}
 #p-cheat .lastchk .csp{flex:1}
-#p-cheat .lastchk .crec{margin-left:16px;font-family:var(--f-num);font-size:12px;color:var(--tx3)}
-#p-cheat .lastchk .crec.on{color:#ff8a83}
-#p-cheat .chklog{display:grid;grid-template-columns:auto 1fr;column-gap:10px;align-items:baseline;margin-top:-8px}
-#p-cheat .chklog .cl{font-family:var(--f-num);font-size:12px;line-height:1.7;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#p-cheat .chklog .cl b{color:var(--tx);font-weight:500}
-#p-cheat .chklog .cl .r{color:#ff8a83}
-#p-cheat .found.none{border-color:var(--ln2);background:var(--s1)}
-#p-cheat .found.none .tag{background:var(--s2);color:var(--tx3);border:1px solid var(--ln2)}
+#p-cheat .lastchk .cstate{color:var(--yel)}
+#p-cheat .lastchk .crec{color:var(--tx3)}
+#p-cheat .lastchk .crec.on{color:var(--tx2)}
+#p-cheat .lastchk .crec.on::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--warn,#ff9640);margin-right:8px;vertical-align:0}
+#p-cheat .lastchk .clast{margin-left:8px;display:flex;align-items:baseline;gap:8px;min-width:0}
+#p-cheat .lastchk .clast .lab{margin:0}
+#p-cheat .lastchk .cmore{height:24px;font-size:11px;padding:0 8px;color:var(--tx3)}
+#p-cheat .cl .f,#p-cheat .clast .f{color:var(--warn,#ff9640)}
+#p-cheat .chklog{margin-top:-8px}
+#p-cheat .chklog .cl{font-size:12.5px;line-height:1.7;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#p-cheat .chklog .cl b,#p-cheat .clast b{color:var(--tx);font-weight:500}
+
+/* The FOUND bar (the page's main panel): calm, a thin left line; red only for a STRONG find. */
+#p-cheat .found{gap:var(--g2,16px);padding:var(--g1,8px) var(--g2,16px);border:1px solid var(--ln2);background:var(--s1);box-shadow:inset 3px 0 0 var(--warn,#ff9640)}
+#p-cheat .found .tag{background:transparent;color:var(--warn,#ff9640);border:1px solid rgba(255,150,64,.5);padding:0 8px;line-height:22px;font-size:12px}
+#p-cheat .found.strong{box-shadow:inset 3px 0 0 var(--bad,#ff5a52)}
+#p-cheat .found.strong .tag{background:var(--bad,#ff5a52);border-color:var(--bad,#ff5a52);color:#1a0505}
+#p-cheat .found .who{font-family:var(--f-text,"Segoe UI",system-ui,sans-serif)}
+#p-cheat .found .what{font-family:var(--f-text,"Segoe UI",system-ui,sans-serif);font-size:13px;color:var(--tx2)}
+#p-cheat .found .what .num{color:var(--tx)}
+#p-cheat .found.none{box-shadow:none}
+#p-cheat .found.none .tag{background:var(--s2);color:var(--tx3);border-color:var(--ln2)}
 #p-cheat .found.none .what{color:var(--tx3)}
 #p-cheat .found.none::before,#p-cheat .found.none::after{border-color:var(--ln2)}
-/* The summary, and right of it the user's "What these mean" box. */
+#p-cheat .fbtns{display:flex;align-items:center;gap:8px}
+/* Votekick: an outline button (not filled red); greyed with the reason in its hover when it can't vote. */
+#p-cheat .kick{background:transparent;border-color:var(--ln2);color:var(--tx)}
+#p-cheat .kick:hover{background:var(--bad-d,rgba(255,90,82,.1));border-color:rgba(255,90,82,.6);color:#ff8a83}
+#p-cheat .kick.no,#p-cheat .kick.no:hover{background:transparent;border-color:var(--ln);color:var(--tx3);cursor:not-allowed;opacity:.6}
+#p-cheat .kick.no:active{transform:none}
+#p-cheat .btn svg{width:14px;height:14px;stroke-width:1.4}
+#p-cheat .btn svg.chev{width:10px;height:10px;stroke-width:1.8}
+
+/* The Export menu under its button. */
+#p-cheat .xport{position:relative}
+#p-cheat .xmenu{position:absolute;right:0;top:calc(100% + 8px);z-index:20;min-width:200px;background:var(--s1);border:1px solid var(--ln2);box-shadow:0 8px 24px rgba(0,0,0,.45);padding:8px 0;display:flex;flex-direction:column;animation:cd-fade var(--fade,.1s) ease-out}
+#p-cheat .xmenu button{all:unset;box-sizing:border-box;padding:8px 16px;font-family:var(--f-head,"Bahnschrift","Arial Narrow",sans-serif);font-weight:600;font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx);cursor:pointer;white-space:nowrap;transition:background-color var(--fade,.1s),color var(--fade,.1s)}
+#p-cheat .xmenu button:hover,#p-cheat .xmenu button:focus-visible{background:var(--ac-d);color:var(--ac)}
+
+/* The table of what was found, and right of it the user's "What these mean" box. */
 #p-cheat .summrow{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;align-items:stretch}
-#p-cheat .summ{overflow:auto;max-height:340px;white-space:pre-wrap;overflow-wrap:anywhere}
+#p-cheat .ftable{overflow:auto;max-height:340px}
+#p-cheat .ftable .dmeta{margin-left:auto;font-size:12px;color:var(--tx3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#p-cheat .ftab td{height:40px;font-family:var(--f-text,"Segoe UI",system-ui,sans-serif)}
+#p-cheat .ftab td.num{font-family:var(--f-num,Consolas,ui-monospace,monospace)}
+#p-cheat .ftab .you{color:var(--tx3);font-size:12px}
+#p-cheat .ftab .about{font-size:13px;color:var(--tx)}
+#p-cheat .ck{font-size:12px;color:var(--tx3);margin-left:8px}
+#p-cheat .ftab .str{display:inline-block}
+#p-cheat .str{font-family:var(--f-head,"Bahnschrift","Arial Narrow",sans-serif);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+#p-cheat .str.weak{color:var(--warn,#ff9640);border-color:rgba(255,150,64,.5)}
+#p-cheat .str.strong{color:#1a0505;background:var(--bad,#ff5a52);border-color:var(--bad,#ff5a52)}
 #p-cheat ::-webkit-scrollbar{width:8px;height:8px}
 #p-cheat ::-webkit-scrollbar-thumb{background:var(--ln2)}
 #p-cheat ::-webkit-scrollbar-track{background:transparent}
 #p-cheat .meanbox{display:flex;flex-direction:column;min-height:0;max-height:340px}
-#p-cheat .means{overflow:auto;padding:4px 14px}
-#p-cheat .mean{padding:10px 0;border-bottom:1px dashed var(--ln)}
+#p-cheat .means{overflow:auto;padding:0 16px}
+#p-cheat .mean{padding:16px 0;border-bottom:1px dashed var(--ln)}
 #p-cheat .mean:last-child{border-bottom:0}
-#p-cheat .mean .mh{display:flex;align-items:center;gap:10px}
-#p-cheat .mean code{font-family:var(--f-num);font-size:12px;color:var(--ac);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
-#p-cheat .mean .ma{font-size:11.5px;color:var(--tx3);margin-top:3px}
-#p-cheat .mean p{font-size:12.5px;line-height:1.5;color:var(--tx2);margin-top:3px}
-#p-cheat .li .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#p-cheat .det .cf{font-size:10.5px;letter-spacing:.06em}
-#p-cheat .det .cf.strong{color:var(--red)}
-#p-cheat .det .cf.weak{color:#ffb070;font-weight:500}
-#p-cheat .ddets{max-height:420px;overflow:auto}
-#p-cheat .json{white-space:pre-wrap;word-break:break-word}
-#p-cheat .empty{padding:12px 14px;font-size:12.5px;color:var(--tx3)}
+#p-cheat .mean .mh{display:flex;align-items:center;gap:8px}
+#p-cheat .mean .ck{font-size:13px;font-weight:600;color:var(--ac);margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+#p-cheat .mean .ma{font-size:12px;color:var(--tx3)}
+#p-cheat .mean p{font-size:12.5px;line-height:1.5;color:var(--tx2);margin-top:8px}
 
-/* ---- Duels ---- */
-#p-duels .bigsw{position:relative}
+/* Players / Detections / Details */
+#p-cheat .dhint{margin-left:auto;font-size:11px;color:var(--tx3)}
+#p-cheat .li{padding:0 var(--g2,16px);gap:var(--g1,8px);height:40px}
+#p-cheat .li.sel,#p-cheat .det.sel{box-shadow:inset 2px 0 0 var(--ac),inset 0 0 16px rgba(45,226,200,.06)}
+#p-cheat .li .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#p-cheat .li .c{font-family:var(--f-num,Consolas,ui-monospace,monospace)}
+#p-cheat .li .c.r{color:var(--bad,#ff5a52)}
+#p-cheat .det{padding:0 var(--g2,16px);gap:var(--g1,8px);height:32px;font-family:var(--f-text,"Segoe UI",system-ui,sans-serif);font-size:12.5px}
+#p-cheat .det .t{font-family:var(--f-num,Consolas,ui-monospace,monospace);font-size:12px}
+#p-cheat .det .cf{font-family:var(--f-head,"Bahnschrift","Arial Narrow",sans-serif);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+#p-cheat .det .cf.strong{color:var(--bad,#ff5a52)}
+#p-cheat .det .cf.weak{color:var(--warn,#ff9640);font-weight:500}
+#p-cheat .ddets{max-height:420px;overflow:auto}
+#p-cheat .json{padding:16px;white-space:pre-wrap;word-break:break-word}
+#p-cheat .cmdline{margin:0 16px 16px;padding:8px 8px 8px 16px;gap:8px}
+#p-cheat .empty{padding:16px;font-size:12.5px;color:var(--tx3)}
+
+/* ---- Duels (HoovyGPT) ---- */
+#p-duels .bigsw{position:relative;padding:var(--g2,16px);gap:var(--g2,16px)}
 #p-duels .bigsw .swtxt.wide{width:auto;white-space:nowrap}
-#p-duels .duel{border-bottom:1px solid var(--ln)}
+#p-duels .dcount{font-size:12px;color:var(--tx3)}
+#p-duels .dstop:hover{border-color:var(--warn,#ff9640);color:var(--warn,#ff9640);background:var(--warn-d,rgba(255,150,64,.08))}
+#p-duels .duel{padding:var(--g2,16px);gap:var(--g2,16px);border-bottom:1px solid var(--ln)}
 #p-duels .duel:last-child{border-bottom:0}
 #p-duels .duel .p{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #p-duels .duel .p.rt{text-align:right}
+#p-duels .duel .sc{font-family:var(--f-num,Consolas,ui-monospace,monospace)}
 #p-duels .duel .dlab{grid-column:1 / -1;margin-bottom:-8px}
-#p-duels .dueltxt{padding:16px 14px;font-family:var(--f-num);font-size:13px;color:var(--tx)}
-#p-duels .dueltxt.muted{color:var(--tx3);font-family:var(--f-ui);font-size:12.5px}
-#p-duels .model{position:relative;cursor:pointer}
+#p-duels .dueltxt{padding:16px;font-size:13px;color:var(--tx)}
+#p-duels .dueltxt.muted{color:var(--tx3);font-size:12.5px}
+#p-duels .model{position:relative;cursor:pointer;gap:8px;padding:0 16px;font-family:var(--f-text,"Segoe UI",system-ui,sans-serif);font-size:13px}
 #p-duels .model .mname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#p-duels .model .q{white-space:nowrap}
+#p-duels .model .q{white-space:nowrap;font-family:var(--f-num,Consolas,ui-monospace,monospace);font-size:12px}
 #p-duels .model:hover{border-color:var(--ac)}
-#p-duels .msel{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-family:var(--f-num);font-size:12.5px;background:var(--s1);color:var(--tx)}
+#p-duels .msel{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:12.5px;background:var(--s1);color:var(--tx)}
+#p-duels .meter{margin-top:8px}
+#p-duels .mnote{font-size:12px;color:var(--tx3);margin-top:8px}
+/* Who can use !badbot and !goodbot: three choices, named by their effect; the picked one's effect beside. */
+#p-duels .dlock{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+#p-duels .dlock .seg{flex:none}
+#p-duels .dlock .seg button{flex:none;padding:0 16px}
+#p-duels .dlockhint{flex:1;min-width:240px;color:var(--tx2);font-size:12.5px}
 #p-duels .dt tr.first td:first-child{color:var(--ac)}
-#p-duels .tnote{padding:8px 14px 10px;font-size:11px;color:var(--tx3)}
-#p-duels .dcmds .cmd{grid-template-columns:200px 1fr}
+#p-duels .tnote{padding:8px 16px;font-size:12px;color:var(--tx3)}
+#p-duels .dcmds .cmd{grid-template-columns:200px 1fr;gap:16px;padding:8px 0}
+#p-duels .dtokpnl.shut .pnl-h{border-bottom:0}

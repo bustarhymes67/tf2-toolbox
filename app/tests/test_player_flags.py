@@ -26,7 +26,6 @@ class FlagWhyTest(unittest.TestCase):
             ("1 server ban: mic spam (Skial)", "weak"),
             ("1 server ban", "weak"),
             ("70% crit kills (14/20), possible crit hack", "strong"),
-            ("45 headshots in one life (Sniper record)", "medium"),
             ("90% headshots (18/20 sniper kills)", "medium"),
             ("secondhand cheater (friends with x)", "weak"),
             ("friends with flagged x", "weak"),

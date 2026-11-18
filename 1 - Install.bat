@@ -26,10 +26,10 @@ pause
 exit /b 1
 
 :have_python
-rem 2. The extra Python packages the scanner needs: pictures, time zones and its window (pywebview).
-echo Installing the Python packages the scanner needs...
+rem 2. The extra Python packages the toolbox needs: pictures, time zones and its window (pywebview).
+echo Installing the Python packages the toolbox needs...
 "%PY%" -m pip install --user --quiet --disable-pip-version-check -r app\requirements.txt
-if errorlevel 1 echo Some packages could not be installed. The scanner can still start, in its classic window.
+if errorlevel 1 echo Some packages could not be installed. Run this again; the toolbox needs them to start.
 
 rem 3. Everything else: Steam, TF2 launch options, keys, HoovyGPT, the cheat check.
 "%PY%" app\tf2_setup.py
