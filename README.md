@@ -112,40 +112,89 @@ NOTE: The scanner does not read or change the memory of the game. It only reads 
 
 ## Why it doesn't trigger VAC
 
-VAC looks for programs that change the game: code injected into `hl2.exe` / `tf_win64.exe`, game memory read or written, game files patched, or input sent for you (aimbots, triggerbots). TF2 Toolbox does none of these. It only uses things TF2 itself offers to every player: the console log, the remote console (RCON) and demo recording. It is a separate program, like Discord or OBS beside the game, and it works the same way as the well-known community tools TF2 Bot Detector and MegaAntiCheat.
+### What VAC looks for
 
-### What it touches
+VAC (Valve Anti-Cheat) runs alongside TF2 and looks for **cheats: programs that change the game process.** For example:
+- code injected into the game (a DLL loaded into TF2, hooks on its functions);
+- another program that reads or writes the game's memory (wallhacks read where players are, aimbots write where you aim);
+- changed game files;
+- fake mouse and keyboard input (aimbots, triggerbots).
 
-| What | How | Read or write |
+TF2 Toolbox does **none** of these. It is a separate program, like Discord or OBS running beside the game. It never opens the TF2 process. It only uses three things TF2 gives every player on purpose: the **console log**, the **remote console (RCON)** and **demo recording**. The community tools [TF2 Bot Detector](https://github.com/PazerOP/tf2_bot_detector) and [MegaAntiCheat](https://github.com/MegaAntiCheat/client-backend) work the same way: they also read `console.log` and talk to TF2 over RCON.
+
+### 1. The console log: a text file TF2 writes itself
+
+- With the launch option `-condebug`, TF2 itself copies everything its console shows into a plain text file: `Team Fortress 2\tf\console.log`. This includes chat lines, kill messages and the answers to commands.
+- The toolbox opens that file **for reading only**, the way Notepad would, and reads the new lines as they are added. It never writes to it.
+- Example line: `xX_aim_god_Xx :  gg ez`. The toolbox sees "a player said something" and translates it if it's in another language.
+- `-conclearlog` makes TF2 start a fresh, empty log each time it launches, so the file doesn't grow forever.
+
+Reading a text file that the game writes on its own doesn't touch the game in any way. VAC has no reason to look at it.
+
+### 2. RCON: TF2's own remote console
+
+**What it is.** RCON (Remote CONsole) is a feature Valve built into every Source game. It lets a program send a line to the game's console, the same console you open with `~`, and get the console's answer back. Server admins use it every day. TF2 only accepts RCON because of these launch options:
+
+| Launch option | What it does |
+|---|---|
+| `-usercon` | Turns RCON on in your game (normally only servers have it). |
+| `+ip 0.0.0.0`, `+hostport 27069`, `+net_start` | Starts TF2's network listener on port 27069, where RCON connects. |
+| `+rcon_password <random>` | The password. The setup makes a random one; without it TF2 refuses the connection. |
+
+**How the toolbox uses it, step by step:**
+1. It opens a normal network connection (TCP) to `127.0.0.1:27069`. That is your own computer, so nothing leaves your PC.
+2. It logs in by sending the password in an RCON "auth" packet. TF2 answers "OK" or "wrong password".
+3. For each command, it sends an RCON "exec" packet containing the command as text, for example `status`. TF2 runs it **exactly as if you had typed it in the console** and sends the printed answer back as text.
+4. The toolbox reads that text, for example the player list from `status`.
+
+**Every command it sends:**
+
+| Command | When | What TF2 answers / does |
 |---|---|---|
-| `tf/console.log` | TF2 writes its console to this file because of `-condebug`. The toolbox reads the new lines (chat, kills, `status`). | Read only |
-| RCON (TF2's remote console) | A network connection to `127.0.0.1` port 27069, with the password from the launch options. It is the same console you open with `~`. | Types console commands (list below) |
-| Demo files (`tf/demos`, `.dem`) | TF2 records them (`ds_record`). The cheat check reads a finished demo with demo-analysis, a separate program. | Read, and deletes its own demos where nothing was found |
-| Steam's `localconfig.vdf` | Only the setup, only while Steam is closed: it adds the launch options to TF2. A backup is saved next to it first. | Written once, at setup |
-| The screen | Its own windows (player list, mini HUD, translations) float on top of TF2, as normal Windows windows. | Its own windows only |
-| The F8 / F9 keys | Windows' `RegisterHotKey`: Windows tells the toolbox when you press them. | Listens to these 2 keys only |
-| Internet | Steam Web API, steamhistory.net, cheater lists, Google / DeepL / Microsoft (translation), Gemini / Groq (HoovyGPT). Never the game server. | Requests from the toolbox, not from TF2 |
+| `status` | Every 10 seconds | The players on the server: name, Steam ID, time played, ping. Any player can type it. |
+| `tf_lobby_debug` | Every 10 seconds | Which team each player is on in a matchmaking lobby. |
+| `g15_dumpplayer` | Every 3 seconds | The scoreboard: team, class, health, score, deaths, alive or dead. It exists for Logitech G15 keyboard screens and works because of `-g15`. |
+| `say "..."` / `say_team "..."` | Only when a chat feature you turned on posts, or a player uses a chat command (`!who`, `!speak`, ...) | A normal chat message from you. |
+| `ds_enable`, `ds_record`, `ds_stop`, `ds_mark` | Only with the cheat check | TF2's own demo recorder: start, stop, bookmark. |
+| `callvote kick "<id> cheating"` | Only when you click **Votekick** | The same vote as from TF2's own scoreboard menu. |
+| `retry` | Only with **Auto-reconnect when idle** on | Reconnects to the same server, like typing `retry`. |
 
-**The console commands it types over RCON:**
-- Reading: `status`, `tf_lobby_debug`, `g15_dumpplayer` (the scoreboard; `-g15` turns it on).
-- Chat, only when you switch it on or a player uses a chat command: `say` and `say_team`.
-- Demos: `ds_enable`, `ds_record`, `ds_stop`, `ds_mark`.
-- Only when you click it or switch it on: `callvote kick` (the Votekick button) and `retry` (Auto-reconnect when idle).
+None of these is a cheat command. None needs `sv_cheats`, and each one is something any player can type in their console by hand.
 
-### What it doesn't touch
+**Why it's safe even though it's an external program controlling TF2:**
+- **The game does the work itself.** RCON is a door Valve built into the game. The toolbox doesn't break in: it knocks with the password, and TF2 runs ordinary console commands with its own code. Nothing in the game's memory or code changes. Only the console gets a text line, as if you typed it.
+- **"External" isn't what VAC checks for.** External cheats are also caught. They aren't caught for running beside the game, but for **reading the game's memory** (`ReadProcessMemory`, used to find player positions) or **faking your input**. The toolbox does neither. All it knows about the match comes from the text answers above, which TF2 gives to anyone who types those commands.
+- **No unfair information.** `status` and the scoreboard show what you could see yourself with `~` and Tab. Nothing hidden, like positions behind walls, is ever available through these commands.
 
-- **The game's memory.** It never opens the TF2 process, and never reads or writes its memory.
-- **The game's code.** No DLL is injected, nothing is hooked, and no overlay is drawn inside the game: its windows are separate windows on top of it.
-- **The game's files.** TF2's `.vpk` files, `.dll` files, `cfg` folder, `autoexec.cfg` and `custom` folder are not changed. Only the demos it records are deleted, and only when nothing was found in them.
-- **Your mouse and keyboard in the game.** It never moves the mouse, never presses keys, never aims and never shoots. It doesn't read other keys than F8 and F9.
-- **The game server.** It only talks to your own TF2. The server sees only what any player can do: chat, votes, `retry`.
-- **Other players' computers.** The "fake IP" is a made-up number it says in chat. It doesn't look up real IPs.
+### 3. Demos: TF2's own recordings
+
+- TF2 records a demo, a `.dem` file in `tf\demos`, when told to with `ds_record`. That's the built-in demo recorder.
+- After the match, a separate program ([demo-analysis](https://github.com/Nocrex/demo-analysis)) reads that **finished file from disk**, the same way a video player opens a video. It doesn't touch TF2.
+- When nothing was found in a demo, the toolbox deletes it (only its own recordings), so your disk doesn't fill up.
+
+### 4. Everything else
+
+| What | How |
+|---|---|
+| Steam's `localconfig.vdf` | Only the setup, only while Steam is closed: it adds the launch options above to TF2's launch options. A backup is saved next to it first. You can see the result in Steam > TF2 > Properties. |
+| Windows on top of the game | The player list, the mini HUD and the translations are ordinary Windows windows that float above TF2, like a Discord overlay window. Nothing is drawn **inside** the game. |
+| F8 / F9 | Windows' `RegisterHotKey`: Windows tells the toolbox when these 2 keys are pressed. It doesn't see any other key, and it never presses keys or moves the mouse. |
+| Internet | Steam Web API, steamhistory.net, cheater lists, Google / DeepL / Microsoft (translation), Gemini / Groq (HoovyGPT). These are requests from the toolbox, never through TF2 and never to the game server. |
+
+### What it never touches
+
+- **TF2's memory or process:** never opened, read or written.
+- **TF2's code:** no DLL injection, no hooks, nothing drawn inside the game.
+- **TF2's files:** `.vpk`, `.dll`, the `cfg` folder, `autoexec.cfg` and the `custom` folder stay as they are.
+- **Your mouse and keyboard in the game:** never moved or pressed, no aiming, no shooting.
+- **The game server:** it only talks to your own TF2. The server sees only what any player can do: chat, a vote, `retry`.
+- **Other players' computers:** the "fake IP" is a made-up number it says in chat. It never looks up real IPs.
 
 ### Good to know
 
 - VAC is about cheats. The chat features can still get you **reported or muted by players or community servers** if you use them to spam. The auto-chat switches (announcer, "ez", translations in chat) are off until you turn them on. The chat commands (`!who`, `!speak` and so on) answer other players, and each one can be switched off on the Chat page.
-- The launch options open TF2's network port for RCON (`+ip 0.0.0.0`). That port is protected by a random password that only the toolbox knows, and your router and Windows Firewall normally keep it closed to the internet.
-- Valve doesn't publish how VAC works, so nobody can give a written guarantee. The points above are why tools that only use the console log and RCON are not detected as cheats.
+- The RCON port is protected by the random password that only the toolbox knows. Your router and Windows Firewall normally keep it closed to the internet.
+- Valve doesn't publish how VAC works, so nobody can give a written guarantee. What's above is why tools that only read the console log and use RCON are not seen as cheats.
 
 ## Troubleshooting
 
