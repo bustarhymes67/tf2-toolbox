@@ -201,23 +201,85 @@ def mymemory(text, target, source="auto"):
     return data["responseData"]["translatedText"], source
 
 
-TRANSLATORS = [google, google_chrome, mymemory]
+# The keys of the services that need one (DeepL, Microsoft). TF2 Toolbox points this at its settings,
+# so a key saved while it runs (setup, secrets file) is used at once. Empty: those services are skipped.
+KEYS = {}
+
+
+def post_json(url, body, headers):
+    req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), method="POST",
+                                 headers={"Content-Type": "application/json", **headers})
+    with urllib.request.urlopen(req, timeout=6) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+# Google's codes where DeepL / Microsoft use another one.
+DEEPL_TARGETS = {"en": "EN-US", "pt": "PT-BR", "zh-CN": "ZH-HANS", "iw": "HE", "no": "NB"}
+MICROSOFT_CODES = {"zh-CN": "zh-Hans", "iw": "he", "tl": "fil", "no": "nb"}
+
+
+def deepl(text, target, source="auto"):
+    """DeepL API Free: 500,000 characters a month with a free key (deepl.com/pro-api).
+    A free key ends in ":fx" and has its own address."""
+    key = KEYS.get("deepl_api_key", "")
+    host = "api-free.deepl.com" if key.endswith(":fx") else "api.deepl.com"
+    body = {"text": [text], "target_lang": DEEPL_TARGETS.get(target, target.split("-")[0].upper())}
+    if source != "auto":
+        body["source_lang"] = source.split("-")[0].upper()
+    data = post_json(f"https://{host}/v2/translate", body, {"Authorization": f"DeepL-Auth-Key {key}"})
+    first = data["translations"][0]
+    return first["text"], first.get("detected_source_language", "?").lower()
+
+
+deepl.needs_key = "deepl_api_key"
+
+
+def microsoft(text, target, source="auto"):
+    """Microsoft Translator (Azure, free tier F0: 2 million characters a month). A key made in a
+    region (not "Global") also needs that region, e.g. westeurope."""
+    params = {"api-version": "3.0", "to": MICROSOFT_CODES.get(target, target)}
+    if source != "auto":
+        params["from"] = MICROSOFT_CODES.get(source, source)
+    headers = {"Ocp-Apim-Subscription-Key": KEYS.get("microsoft_translator_key", "")}
+    region = (KEYS.get("microsoft_translator_region") or "").strip()
+    if region and region.lower() != "global":
+        headers["Ocp-Apim-Subscription-Region"] = region
+    data = post_json("https://api.cognitive.microsofttranslator.com/translate?" + urllib.parse.urlencode(params),
+                     [{"Text": text}], headers)
+    lang = (data[0].get("detectedLanguage") or {}).get("language") or source
+    return data[0]["translations"][0]["text"], lang
+
+
+microsoft.needs_key = "microsoft_translator_key"
+
+
+# In this order: Google (free, no key), then DeepL and Microsoft (free keys, used when Google says
+# "too many requests"), then Google's second address and MyMemory as the last resort.
+TRANSLATORS = [google, deepl, microsoft, google_chrome, mymemory]
 resting_until = {}   # translator -> time it may be tried again after "too many requests"
 cache = {}           # (text, target, source) -> (translation, lang): chat repeats a lot
 
 
-SERVICE_NAMES = {"google": "Google", "google_chrome": "Google's second address", "mymemory": "MyMemory"}
+SERVICE_NAMES = {"google": "Google", "deepl": "DeepL", "microsoft": "Microsoft Translator",
+                 "google_chrome": "Google's second address", "mymemory": "MyMemory"}
+REST_CODES = (403, 429, 456)  # too many requests / out of free characters (DeepL says 456, Microsoft 403)
+
+
+def active_translators():
+    """The services that can be asked: those that need a key only once one is set."""
+    return [t for t in TRANSLATORS if not getattr(t, "needs_key", None) or KEYS.get(t.needs_key)]
 
 
 def translator_health(now=None):
     """("ok" | "warn" | "bad", what's going on) for the scanner's Status page: which of the free
     services are resting after "too many requests", and until when."""
     now = now or time.time()
-    resting = {t: until for t, until in resting_until.items() if until > now}
+    active = active_translators()
+    resting = {t: until for t, until in resting_until.items() if until > now and t in active}
     if not resting:
         return "ok", "working"
-    names = ", ".join(SERVICE_NAMES.get(t.__name__, t.__name__) for t in TRANSLATORS if t in resting)
-    if len(resting) >= len(TRANSLATORS):
+    names = ", ".join(SERVICE_NAMES.get(t.__name__, t.__name__) for t in active if t in resting)
+    if len(resting) >= len(active):
         back = time.strftime("%H:%M", time.localtime(min(resting.values())))
         return "bad", f"every service said too many requests: nothing is translated until {back}"
     back = time.strftime("%H:%M", time.localtime(max(resting.values())))
@@ -225,18 +287,18 @@ def translator_health(now=None):
 
 
 def translate(text, target, source="auto"):
-    """Returns (translation, source_lang). Tries free services in turn: one that
-    says "too many requests" is left alone for 15 minutes."""
+    """Returns (translation, source_lang). Tries the services in turn (Google, DeepL, Microsoft,
+    then the last resorts): one that says "too many requests" is left alone for 15 minutes."""
     if (text, target, source) in cache:
         return cache[(text, target, source)]
     error = None
-    for translator in TRANSLATORS:
+    for translator in active_translators():
         if resting_until.get(translator, 0) > time.time():
             continue
         try:
             result = translator(text, target, source)
         except urllib.error.HTTPError as e:
-            if e.code in (403, 429):
+            if e.code in REST_CODES:
                 resting_until[translator] = time.time() + 15 * 60
                 print(f"Translator: {translator.__name__} said {e.code} (too many requests): "
                       f"not asked again for 15 minutes", flush=True)
@@ -688,6 +750,12 @@ def start_translator(master=None, chat_lines=None):
 
 def main():
     single_instance("tf2_chat_translator")
+    try:  # run on its own: the DeepL / Microsoft keys TF2 Toolbox's setup saved
+        import settings
+        KEYS.update(settings.load_json(settings.CONFIG_PATH, {}))
+        KEYS.update(settings.load_secrets())
+    except Exception:
+        pass
     overlay, results, toggles = start_translator()
     print("Close this window to stop.")
     overlay.run(results, toggles)

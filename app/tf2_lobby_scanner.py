@@ -479,7 +479,8 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
             return
         self.keys_stamp = stamp
         stored = load_secrets()
-        changed = [k for k in ("steam_api_key", "steamhistory_api_key", "gemini_api_key", "groq_api_key")
+        changed = [k for k in ("steam_api_key", "steamhistory_api_key", "gemini_api_key", "groq_api_key",
+                                "deepl_api_key", "microsoft_translator_key")
                    if stored.get(k) and stored[k] != self.cfg.get(k)]
         for key in changed:
             self.cfg[key] = stored[key]
@@ -1028,6 +1029,7 @@ def main():
     single_instance("tf2_lobby_scanner", "TF2 Toolbox is already running.\n"
                                          "Press F9 to show it.")
     cfg = load_config()
+    tf2_translator.KEYS = cfg  # DeepL / Microsoft keys, also ones saved while it runs (reload_keys)
     forget_old_player_memory()
     print("TF2 Toolbox running. Press F9 for its window; its X stops it.\n")
     print("TF2 launch options needed (Steam > TF2 > Properties > Launch options):")

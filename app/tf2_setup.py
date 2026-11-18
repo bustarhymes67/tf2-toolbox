@@ -209,7 +209,8 @@ def setup_launch_options(cfg, record_demos=False):
 # What a key of each kind looks like, to catch a wrong paste (a warning only).
 KEY_SHAPES = {"steam_api_key": re.compile(r"^[0-9A-Fa-f]{32}$"),
               "gemini_api_key": re.compile(r"^AIza[\w-]{30,}$"),
-              "groq_api_key": re.compile(r"^gsk_\w{20,}$")}
+              "groq_api_key": re.compile(r"^gsk_\w{20,}$"),
+              "deepl_api_key": re.compile(r"^[0-9a-fA-F-]{36}(:fx)?$")}
 
 
 def ask_key(cfg, field, title, url, steps):
@@ -262,7 +263,7 @@ def step(n, total, title):
 def main():
     cfg = scanner.load_config()
     keys_only, options_only = "--keys" in sys.argv, "--launch-options" in sys.argv
-    total = 1 if options_only else 2 if keys_only else 5
+    total = 1 if options_only else 3 if keys_only else 6
     print("TF2 Toolbox setup. Each step says what to do.")
     print("For a [Y/n] question, press Enter for the answer in capitals.")
     n = 0
@@ -319,6 +320,27 @@ def main():
               " to switch it on. It starts off each time, so it never talks by surprise.")
     else:
         print("No AI key was saved, so HoovyGPT stays off. Run '1 - Install.bat' again to add one.")
+
+    n += 1
+    step(n, total, "Chat translation backups (free, optional)")
+    print("Chat is translated by Google first, with no key. When Google says 'too many requests'")
+    print("(a busy lobby), DeepL takes over, then Microsoft Translator. Without these keys the")
+    print("translator falls back to MyMemory, which is weaker. Both sites ask for a card to check")
+    print("you're a person, but their free plans never charge it.")
+    ask_key(cfg, "deepl_api_key", "DeepL API key (first backup)", "https://www.deepl.com/pro-api",
+            ["Sign up for 'DeepL API Free' (500,000 characters a month, free).",
+             "Then open https://www.deepl.com/your-account/keys",
+             "Copy the key (it ends with :fx)."])
+    if ask_key(cfg, "microsoft_translator_key", "Microsoft Translator key (second backup)",
+               "https://portal.azure.com/#create/Microsoft.CognitiveServicesTextTranslation",
+               ["Log in with a Microsoft account (make a free Azure account if it asks).",
+                "Resource group: 'Create new', any name. Region: Global. Name: anything.",
+                "Pricing tier: 'F0 (Free)' (2 million characters a month). Click 'Review + create', then 'Create'.",
+                "Click 'Go to resource', then 'Keys and Endpoint' on the left.",
+                "Copy 'KEY 1'."]):
+        region = input("The Region you picked (press Enter for Global): ").strip()
+        cfg["microsoft_translator_region"] = "" if region.lower() in ("", "global") else region
+        scanner.save_config(cfg)
 
     if keys_only:
         return

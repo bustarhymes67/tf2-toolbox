@@ -34,6 +34,7 @@ The setup does all of this for you:
 | Steam API key (optional) | Opens [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) and tells you what to click. | Type `localhost`, click **Register**, copy the key, paste it in the black window. |
 | steamhistory.net key (optional) | Opens [steamhistory.net/account#developer](https://steamhistory.net/account#developer). | Log in with Steam, make a key, paste it. |
 | HoovyGPT (optional) | Opens [aistudio.google.com/api-keys](https://aistudio.google.com/api-keys) (Gemini, the main AI), then [console.groq.com/keys](https://console.groq.com/keys) (Groq, the backup AI). Saves the keys and lets HoovyGPT talk. | Make each key, paste it. |
+| Translation backups (optional) | Opens [deepl.com/pro-api](https://www.deepl.com/pro-api) (DeepL API Free, 500,000 characters a month), then the [Azure Translator page](https://portal.azure.com/#create/Microsoft.CognitiveServicesTextTranslation) (Microsoft, free tier F0, 2 million characters a month). Chat is translated by Google first; when Google says "too many requests", DeepL takes over, then Microsoft. Without keys it falls back to MyMemory. | Make each key, paste it. Both ask for a card to check you're a person; the free plans never charge it. |
 | Start | Starts TF2 and the scanner. | Push **Enter**. |
 
 All keys are free. To add a key later, open `1 - Install.bat` again. A scanner that is already running picks up a new key by itself within a few seconds.
@@ -170,7 +171,7 @@ once the match ends or you join another server.
 
 Your API keys and the RCON password are not in this folder at all. They're in
 `~/.secrets/tf2translator/.env`, as `KEY=value` lines (`STEAM_API_KEY`, `STEAMHISTORY_API_KEY`,
-`RCON_PASSWORD`, `GEMINI_API_KEY`, `GROQ_API_KEY`). Keys found in an older `scanner_config.json`
+`RCON_PASSWORD`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `DEEPL_API_KEY`, `MICROSOFT_TRANSLATOR_KEY`). Keys found in an older `scanner_config.json`
 are moved there the next time the scanner starts.
 See `.gitignore`.
 

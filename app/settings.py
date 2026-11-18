@@ -11,7 +11,8 @@ CONFIG_PATH = os.path.join(HERE, "scanner_config.json")
 # The API keys and the RCON password: KEY=value lines ("#" for comments), outside the project
 # folder so they can't end up on GitHub by accident.
 SECRETS_PATH = os.path.join(os.path.expanduser("~"), ".secrets", "tf2translator", ".env")
-SECRET_KEYS = ("steam_api_key", "steamhistory_api_key", "rcon_password", "gemini_api_key", "groq_api_key")
+SECRET_KEYS = ("steam_api_key", "steamhistory_api_key", "rcon_password", "gemini_api_key", "groq_api_key",
+               "deepl_api_key", "microsoft_translator_key")
 MARKS_PATH = os.path.join(HERE, "marks.json")
 # Left by earlier versions, which remembered players across matches. Only used to delete them
 # once at startup (tf2_lobby_scanner.forget_old_player_memory): nothing is kept past a match now.
@@ -95,6 +96,10 @@ DEFAULTS = {
     "country_beef_auto": False,    # toggle in the list: announce each of those kills with the score
     "gemini_api_key": "",          # HoovyGPT asks Gemini first (https://aistudio.google.com/api-keys)
     "groq_api_key": "",            # and Groq when Gemini is slow or out (console.groq.com > API Keys)
+    # Chat translation: Google first (no key), then DeepL and Microsoft when Google says "too many requests".
+    "deepl_api_key": "",           # DeepL API Free (deepl.com/your-account/keys), 500,000 characters a month
+    "microsoft_translator_key": "",     # Azure Translator, free tier F0 (portal.azure.com), 2 million a month
+    "microsoft_translator_region": "",  # the key's region, e.g. westeurope; "" or "global" for a Global one
     # Words looked for in profile comments and bios. Each also matches common
     # endings, so "cheat" finds cheater/cheating/cheats. Empty list = off.
     "profile_keywords": ["cheat", "hack", "aimbot", "aim bot", "wallhack", "walls", "spinbot",
