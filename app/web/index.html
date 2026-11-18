@@ -69,8 +69,6 @@ input{font:inherit;color:inherit}
 /* ============ WINDOW ============ */
 .win{width:1400px;height:760px;background:var(--bg);border:1px solid var(--ln2);position:relative;display:grid;grid-template-rows:32px 1fr;overflow:hidden;
   box-shadow:0 0 0 1px #000,0 30px 80px rgba(0,0,0,.7),0 0 60px rgba(45,226,200,.04)}
-.win::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:50;
-  background:repeating-linear-gradient(0deg,rgba(255,255,255,.012) 0 1px,transparent 1px 3px)}
 .title{display:flex;align-items:center;gap:16px;padding-left:14px;border-bottom:1px solid var(--ln2);background:linear-gradient(#0c1117,#090c10);-webkit-user-select:none;user-select:none}
 .logo{display:flex;align-items:center;gap:10px;font-family:var(--f-lab);font-weight:700;font-size:15px;letter-spacing:.16em;text-transform:uppercase}
 .logo-mark{width:16px;height:16px;border:1.5px solid var(--ac);position:relative}
