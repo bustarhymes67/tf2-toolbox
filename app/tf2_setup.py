@@ -323,10 +323,11 @@ def main():
 
     n += 1
     step(n, total, "Chat translation backups (free, optional)")
-    print("Chat is translated by Google first, with no key. When Google says 'too many requests'")
-    print("(a busy lobby), DeepL takes over, then Microsoft Translator. Without these keys the")
-    print("translator falls back to MyMemory, which is weaker. Both sites ask for a card to check")
-    print("you're a person, but their free plans never charge it.")
+    print("Chat is translated in this order: Google (no key), DeepL, Microsoft Translator, Google's")
+    print("second address, MyMemory. Each one is asked only when the one before it fails (for example")
+    print("'too many requests' in a busy lobby). Without these keys it goes Google, Google's second")
+    print("address, MyMemory (weaker, and only Russian and Turkish). Both sites ask for a card to")
+    print("check you're a person; their free plans cost nothing.")
     ask_key(cfg, "deepl_api_key", "DeepL API key (first backup)", "https://www.deepl.com/pro-api",
             ["Scroll to the plans. Under 'DeepL API Free' click 'Sign up for free' (500,000 characters a month).",
              "A normal DeepL account has no API key: this plan adds one, also to an account you already have.",
