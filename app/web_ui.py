@@ -56,7 +56,7 @@ class WebWindow:
         self.window = webview.create_window(
             "TF2 Toolbox", url=PAGE, js_api=Api(actions), frameless=True, easy_drag=False, on_top=True,
             width=w, height=h, x=cfg["x"], y=cfg["y"], background_color="#07090c", resizable=True,
-            min_size=(980, 560))
+            min_size=(980, 560), hidden=True)  # hidden until F9, like the scanner itself (else it shows the page's example text)
         self.window.events.loaded += self._loaded
 
     def _loaded(self):
