@@ -328,8 +328,9 @@ def main():
     print("translator falls back to MyMemory, which is weaker. Both sites ask for a card to check")
     print("you're a person, but their free plans never charge it.")
     ask_key(cfg, "deepl_api_key", "DeepL API key (first backup)", "https://www.deepl.com/pro-api",
-            ["Sign up for 'DeepL API Free' (500,000 characters a month, free).",
-             "Then open https://www.deepl.com/your-account/keys",
+            ["Scroll to the plans. Under 'DeepL API Free' click 'Sign up for free' (500,000 characters a month).",
+             "A normal DeepL account has no API key: this plan adds one, also to an account you already have.",
+             "Then in your account, open the 'API Keys' tab (next to Account and Clients).",
              "Copy the key (it ends with :fx)."])
     if ask_key(cfg, "microsoft_translator_key", "Microsoft Translator key (second backup)",
                "https://portal.azure.com/#create/Microsoft.CognitiveServicesTextTranslation",
