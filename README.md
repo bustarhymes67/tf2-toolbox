@@ -110,6 +110,43 @@ You can read all of the code: `1 - Install.bat` and `app/tf2_setup.py`. The setu
 
 NOTE: The scanner does not read or change the memory of the game. It only reads `console.log`, the demo files, and the answers to console commands.
 
+## Why it doesn't trigger VAC
+
+VAC looks for programs that change the game: code injected into `hl2.exe` / `tf_win64.exe`, game memory read or written, game files patched, or input sent for you (aimbots, triggerbots). TF2 Toolbox does none of these. It only uses things TF2 itself offers to every player: the console log, the remote console (RCON) and demo recording. It is a separate program, like Discord or OBS beside the game, and it works the same way as the well-known community tools TF2 Bot Detector and MegaAntiCheat.
+
+### What it touches
+
+| What | How | Read or write |
+|---|---|---|
+| `tf/console.log` | TF2 writes its console to this file because of `-condebug`. The toolbox reads the new lines (chat, kills, `status`). | Read only |
+| RCON (TF2's remote console) | A network connection to `127.0.0.1` port 27069, with the password from the launch options. It is the same console you open with `~`. | Types console commands (list below) |
+| Demo files (`tf/demos`, `.dem`) | TF2 records them (`ds_record`). The cheat check reads a finished demo with demo-analysis, a separate program. | Read, and deletes its own demos where nothing was found |
+| Steam's `localconfig.vdf` | Only the setup, only while Steam is closed: it adds the launch options to TF2. A backup is saved next to it first. | Written once, at setup |
+| The screen | Its own windows (player list, mini HUD, translations) float on top of TF2, as normal Windows windows. | Its own windows only |
+| The F8 / F9 keys | Windows' `RegisterHotKey`: Windows tells the toolbox when you press them. | Listens to these 2 keys only |
+| Internet | Steam Web API, steamhistory.net, cheater lists, Google / DeepL / Microsoft (translation), Gemini / Groq (HoovyGPT). Never the game server. | Requests from the toolbox, not from TF2 |
+
+**The console commands it types over RCON:**
+- Reading: `status`, `tf_lobby_debug`, `g15_dumpplayer` (the scoreboard; `-g15` turns it on).
+- Chat, only when you switch it on or a player uses a chat command: `say` and `say_team`.
+- Demos: `ds_enable`, `ds_record`, `ds_stop`, `ds_mark`.
+- Only when you click it or switch it on: `callvote kick` (the Votekick button) and `retry` (Auto-reconnect when idle).
+
+### What it doesn't touch
+
+- **The game's memory.** It never opens the TF2 process, and never reads or writes its memory.
+- **The game's code.** No DLL is injected, nothing is hooked, and no overlay is drawn inside the game: its windows are separate windows on top of it.
+- **The game's files.** TF2's `.vpk` files, `.dll` files, `cfg` folder, `autoexec.cfg` and `custom` folder are not changed. Only the demos it records are deleted, and only when nothing was found in them.
+- **Your mouse and keyboard in the game.** It never moves the mouse, never presses keys, never aims and never shoots. It doesn't read other keys than F8 and F9.
+- **The game server.** It only talks to your own TF2. The server sees only what any player can do: chat, votes, `retry`.
+- **Other players' computers.** The "fake IP" is a made-up number it says in chat. It doesn't look up real IPs.
+
+### Good to know
+
+- VAC is about cheats. The chat features can still get you **reported or muted by players or community servers** if you use them to spam. The auto-chat switches (announcer, "ez", translations in chat) are off until you turn them on. The chat commands (`!who`, `!speak` and so on) answer other players, and each one can be switched off on the Chat page.
+- The launch options open TF2's network port for RCON (`+ip 0.0.0.0`). That port is protected by a random password that only the toolbox knows, and your router and Windows Firewall normally keep it closed to the internet.
+- Valve doesn't publish how VAC works, so nobody can give a written guarantee. The points above are why tools that only use the console log and RCON are not detected as cheats.
+
 ## Troubleshooting
 
 | Problem | Action |
