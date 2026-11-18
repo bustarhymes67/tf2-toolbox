@@ -4,6 +4,10 @@ Cheat & bot detector, live match HUD, chat translator and more for Team Fortress
 
 This program shows who is in your TF2 match. It flags likely cheaters and bots, checks demos for cheats, translates the chat, and runs HoovyGPT, an AI chat bot that talks like the Heavy.
 
+![TF2 Toolbox: the player list with the cheater score, then the Cheat check, Duels, Chat, Status and Help pages](docs/tf2-toolbox.gif)
+
+*The real program with made-up players.*
+
 ## The folder
 
 After you extract the ZIP, the folder has only these files:
