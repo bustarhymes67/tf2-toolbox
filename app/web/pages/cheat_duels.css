@@ -1,0 +1,54 @@
+/* cheat_duels: page styles beyond the shared ones in index.html */
+
+/* ---- Cheat check ---- */
+#p-cheat .lastchk .csp{flex:1}
+#p-cheat .lastchk .crec{margin-left:16px;font-family:var(--f-num);font-size:12px;color:var(--tx3)}
+#p-cheat .lastchk .crec.on{color:#ff8a83}
+#p-cheat .chklog{display:grid;grid-template-columns:auto 1fr;column-gap:10px;align-items:baseline;margin-top:-8px}
+#p-cheat .chklog .cl{font-family:var(--f-num);font-size:12px;line-height:1.7;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#p-cheat .chklog .cl b{color:var(--tx);font-weight:500}
+#p-cheat .chklog .cl .r{color:#ff8a83}
+#p-cheat .found.none{border-color:var(--ln2);background:var(--s1)}
+#p-cheat .found.none .tag{background:var(--s2);color:var(--tx3);border:1px solid var(--ln2)}
+#p-cheat .found.none .what{color:var(--tx3)}
+#p-cheat .found.none::before,#p-cheat .found.none::after{border-color:var(--ln2)}
+/* The summary, and right of it the user's "What these mean" box. */
+#p-cheat .summrow{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;align-items:stretch}
+#p-cheat .summ{overflow:auto;max-height:340px;white-space:pre-wrap;overflow-wrap:anywhere}
+#p-cheat ::-webkit-scrollbar{width:8px;height:8px}
+#p-cheat ::-webkit-scrollbar-thumb{background:var(--ln2)}
+#p-cheat ::-webkit-scrollbar-track{background:transparent}
+#p-cheat .meanbox{display:flex;flex-direction:column;min-height:0;max-height:340px}
+#p-cheat .means{overflow:auto;padding:4px 14px}
+#p-cheat .mean{padding:10px 0;border-bottom:1px dashed var(--ln)}
+#p-cheat .mean:last-child{border-bottom:0}
+#p-cheat .mean .mh{display:flex;align-items:center;gap:10px}
+#p-cheat .mean code{font-family:var(--f-num);font-size:12px;color:var(--ac);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+#p-cheat .mean .ma{font-size:11.5px;color:var(--tx3);margin-top:3px}
+#p-cheat .mean p{font-size:12.5px;line-height:1.5;color:var(--tx2);margin-top:3px}
+#p-cheat .li .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#p-cheat .det .cf{font-size:10.5px;letter-spacing:.06em}
+#p-cheat .det .cf.strong{color:var(--red)}
+#p-cheat .det .cf.weak{color:#ffb070;font-weight:500}
+#p-cheat .ddets{max-height:420px;overflow:auto}
+#p-cheat .json{white-space:pre-wrap;word-break:break-word}
+#p-cheat .empty{padding:12px 14px;font-size:12.5px;color:var(--tx3)}
+
+/* ---- Duels ---- */
+#p-duels .bigsw{position:relative}
+#p-duels .bigsw .swtxt.wide{width:auto;white-space:nowrap}
+#p-duels .duel{border-bottom:1px solid var(--ln)}
+#p-duels .duel:last-child{border-bottom:0}
+#p-duels .duel .p{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#p-duels .duel .p.rt{text-align:right}
+#p-duels .duel .dlab{grid-column:1 / -1;margin-bottom:-8px}
+#p-duels .dueltxt{padding:16px 14px;font-family:var(--f-num);font-size:13px;color:var(--tx)}
+#p-duels .dueltxt.muted{color:var(--tx3);font-family:var(--f-ui);font-size:12.5px}
+#p-duels .model{position:relative;cursor:pointer}
+#p-duels .model .mname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#p-duels .model .q{white-space:nowrap}
+#p-duels .model:hover{border-color:var(--ac)}
+#p-duels .msel{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-family:var(--f-num);font-size:12.5px;background:var(--s1);color:var(--tx)}
+#p-duels .dt tr.first td:first-child{color:var(--ac)}
+#p-duels .tnote{padding:8px 14px 10px;font-size:11px;color:var(--tx3)}
+#p-duels .dcmds .cmd{grid-template-columns:200px 1fr}

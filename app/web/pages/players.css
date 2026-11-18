@@ -1,0 +1,78 @@
+/* players: page styles beyond the shared ones in index.html */
+
+/* no player selected: the list takes the whole width (the Tk window hides the panel too) */
+.pgrid.pl-nopanel{grid-template-columns:1fr}
+.pgrid.pl-nopanel .detail{display:none}
+
+/* a team whose colour isn't known yet */
+.team.unk{--tc:var(--ln2);--tcd:rgba(123,137,150,.06)}
+
+/* sortable column titles (click: like the Tk list) */
+.pt th{cursor:pointer;-webkit-user-select:none;user-select:none}
+.pt th:hover{color:var(--tx2)}
+.pt th.srt{color:var(--ac)}
+
+/* "TEAM NOT KNOWN YET" above players whose team isn't known */
+.pt tbody tr.pl-sub{cursor:default}
+.pt tbody tr.pl-sub td{height:26px;background:var(--s2);font-family:var(--f-lab);font-weight:600;font-size:11.5px;letter-spacing:.16em;color:var(--tx3)}
+.pt tbody tr.pl-sub:hover td{background:var(--s2)}
+
+/* class icons from TF2, country flags */
+.pl-ci{width:20px;height:20px;display:block;flex:none;image-rendering:auto}
+.pl-flag{width:20px;height:15px;display:block;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
+.pl-oc{font-family:var(--f-num);font-size:12px;color:var(--tx2)}
+
+/* the rubber stamp in front of the worst flag */
+.pl-stamp{display:inline-block;vertical-align:middle;font-family:var(--f-lab);font-weight:700;font-size:11px;line-height:1;
+  letter-spacing:.14em;text-transform:uppercase;padding:4px 6px 3px;border:2px solid currentColor;border-radius:4px;
+  transform:rotate(-3deg);box-shadow:inset 0 0 0 1px rgba(0,0,0,.35);background:rgba(0,0,0,.25);margin-right:9px}
+.pl-ftx{vertical-align:middle;font-size:13px;font-weight:500}
+
+/* the Columns menu */
+.pl-colwrap{position:relative;display:inline-flex}
+.pl-colmenu{position:absolute;top:calc(100% + 4px);left:0;z-index:40;min-width:180px;background:var(--s1);border:1px solid var(--ln2);
+  box-shadow:0 12px 30px rgba(0,0,0,.6);padding:4px 0;display:flex;flex-direction:column}
+.pl-colmenu[hidden]{display:none}
+.pl-colmenu button{display:flex;align-items:center;gap:10px;height:28px;padding:0 12px;text-align:left;font-family:var(--f-lab);
+  font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx2)}
+.pl-colmenu button:hover{background:var(--s2);color:var(--tx)}
+.pl-colmenu .ck{width:12px;height:12px;border:1px solid var(--ln2);background:var(--bg);flex:none;position:relative}
+.pl-colmenu button.on{color:var(--tx)}
+.pl-colmenu button.on .ck{border-color:var(--ac);background:var(--ac-d)}
+.pl-colmenu button.on .ck::after{content:"";position:absolute;inset:2px;background:var(--ac)}
+
+/* the panel: close button, the extra line, the link and greyed-out buttons */
+.dh .lab{align-items:center;padding-right:96px}
+.pl-close{position:absolute;top:10px;right:10px;width:24px;height:24px;display:grid;place-items:center;color:var(--tx3);font-size:12px}
+.pl-close:hover{color:var(--tx);background:var(--s3)}
+.dh .verdict{right:44px}
+.pl-about{margin-top:6px;font-family:var(--f-num);font-size:11px;color:var(--tx3)}
+.str.info{color:var(--tx3);border-color:var(--ln2)}
+.btn.pl-link{color:#7dbdff;border-color:#24476d;background:#0b1724}
+.btn.pl-link:hover{color:#a6d2ff;border-color:#3d6fa3;background:#10253a}
+.detail button:disabled,.detail button:disabled:hover{opacity:.35;cursor:default;transform:none}
+.agrid .btn:disabled:hover{border-color:var(--ln2);color:var(--tx);background:var(--s2)}
+.agrid .btn.dng:disabled:hover{border-color:rgba(255,90,82,.55);color:#ff8a83;background:var(--red-d)}
+.agrid .btn.pl-link:disabled:hover{color:#7dbdff;border-color:#24476d;background:#0b1724}
+.sgrid button:disabled:hover{color:var(--tx2);background:none}
+.pt td .cls{display:flex}
+.teams::-webkit-scrollbar,.detail::-webkit-scrollbar{width:8px}
+.teams::-webkit-scrollbar-thumb,.detail::-webkit-scrollbar-thumb{background:var(--ln2)}
+
+/* "likely together" guesses: a small chip per group, the team line, the panel line, the (Why?) tooltip */
+.pl-grp{display:inline-block;vertical-align:middle;margin-left:8px;padding:1px 4px 0;border:1px solid currentColor;border-radius:2px;
+  font-family:var(--f-num);font-size:9.5px;line-height:13px;letter-spacing:.04em;cursor:help;background:rgba(0,0,0,.25)}
+.pl-grp:hover{background:rgba(255,255,255,.06)}
+.pl-grp.g0{color:#c58cff}.pl-grp.g1{color:#3fdc8a}.pl-grp.g2{color:#ff8ad8}
+.pl-grp.g3{color:#8ccfff}.pl-grp.g4{color:#e0c58a}.pl-grp.g5{color:#2de2c8}
+.pt td .pn{vertical-align:middle}
+.pl-gc{color:var(--tx2);white-space:nowrap}
+.pl-why{font-family:var(--f-num);font-size:10.5px;color:var(--tx3);cursor:help;border-bottom:1px dotted var(--ln2);outline:none}
+.pl-why:hover,.pl-why:focus{color:var(--ac);border-bottom-color:var(--ac)}
+.pl-tog{margin-top:8px;font-size:12px;color:var(--tx2);display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.pl-tog .pl-grp{margin-left:0}
+.pl-tip{position:fixed;z-index:1000;display:none;max-width:320px;padding:8px 10px;background:#05080b;border:1px solid var(--ac);
+  box-shadow:0 10px 26px rgba(0,0,0,.65);font-family:var(--f-ui);font-size:11.5px;line-height:1.45;color:var(--tx2);pointer-events:none}
+
+/* the team name never breaks onto two lines when the header gets long */
+.team .thead .tname{white-space:nowrap;flex:none}
