@@ -38,7 +38,6 @@ GEMINI = "AIza" + "x" * 35
 GROQ = "gsk_" + "y" * 40
 STEAM = "0123456789ABCDEF0123456789ABCDEF"
 DEEPL = "12345678-abcd-4bcd-8bcd-123456789abc:fx"
-MICROSOFT = "m" * 84
 
 
 class FakeDownload(io.BytesIO):
@@ -95,7 +94,6 @@ class SetupWizardTest(unittest.TestCase):
              "", GEMINI,    # Gemini (asked without a yes/no first)
              "", GROQ,      # Groq
              "", DEEPL,     # DeepL
-             "", MICROSOFT, "westeurope",  # Microsoft and its region
              ""])           # start TF2 and the scanner: Y
         self.assertTrue(tool)
         self.assertIn("-novid", options)  # your own options stay
@@ -105,19 +103,17 @@ class SetupWizardTest(unittest.TestCase):
         self.assertEqual((cfg["steam_api_key"], cfg["steamhistory_api_key"]), (STEAM, ""))
         self.assertEqual((cfg["gemini_api_key"], cfg["groq_api_key"]), (GEMINI, GROQ))
         self.assertTrue(cfg["heavy_talks"])
-        self.assertEqual((cfg["deepl_api_key"], cfg["microsoft_translator_key"]), (DEEPL, MICROSOFT))
-        self.assertEqual(cfg["microsoft_translator_region"], "westeurope")
+        self.assertEqual(cfg["deepl_api_key"], DEEPL)
         self.assertTrue(cfg["demo_check"])
         self.assertEqual(opened, ["https://steamcommunity.com/dev/apikey", "https://steamhistory.net/account#developer",
                                   "https://aistudio.google.com/api-keys", "https://console.groq.com/keys",
-                                  "https://www.deepl.com/pro-api",
-                                  "https://portal.azure.com/#create/Microsoft.CognitiveServicesTextTranslation"])
+                                  "https://www.deepl.com/pro-api"])
         self.assertIn("steam://rungameid/440", started)
         self.assertNotIn("abc123", out)  # the RCON password is never shown
 
     def test_everything_no(self):
         cfg, options, opened, started, tool, out = self.run_wizard(
-            ["n", "", "", "", "", "", "", "", "", "", "", "", "", "n"])
+            ["n", "", "", "", "", "", "", "", "", "", "", "n"])
         self.assertFalse(tool)
         self.assertNotIn("ds_enable", options)
         self.assertIn("-condebug", options)
@@ -127,24 +123,24 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_a_wrong_download_is_not_saved(self):
         cfg, options, _, _, tool, out = self.run_wizard(
-            ["", "", "", "", "", "", "", "", "", "", "", "", "", "n"], download=b"something else")
+            ["", "", "", "", "", "", "", "", "", "", "", "n"], download=b"something else")
         self.assertFalse(tool)
         self.assertNotIn("ds_enable", options)  # no recording without the program that reads it
         self.assertIn("NOT saved", out)
 
     def test_recording_every_match_when_record_only_flagged_is_off(self):
-        cfg, options, *_ = self.run_wizard(["", "", "", "", "", "", "", "", "", "", "", "", "", "n"], record_only_flagged=False)
+        cfg, options, *_ = self.run_wizard(["", "", "", "", "", "", "", "", "", "", "", "n"], record_only_flagged=False)
         self.assertIn("+ds_enable 2", options)
         self.assertNotIn("+ds_enable 0", options)
 
     def test_a_wrong_paste_is_caught(self):
         cfg, *_ = self.run_wizard(
-            ["n", "", "my password", "n", STEAM, "", "", "", "", "", "", "", "", "", "", "n"])
+            ["n", "", "my password", "n", STEAM, "", "", "", "", "", "", "", "", "n"])
         self.assertEqual(cfg["steam_api_key"], STEAM)
 
     def test_a_running_scanner_isnt_started_twice(self):
         cfg, options, opened, started, tool, out = self.run_wizard(
-            ["n", "", "", "", "", "", "", "", "", "", "", "", "", "n"], scanner_on=True)
+            ["n", "", "", "", "", "", "", "", "", "", "", "n"], scanner_on=True)
         self.assertEqual(started, [])  # "Start TF2 now?" was answered no; no second scanner either
         self.assertIn("already running", out)
         self.assertIn("picks up the new keys", out)

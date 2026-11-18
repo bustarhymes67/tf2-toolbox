@@ -179,14 +179,6 @@ def google(text, target, source="auto"):
     return "".join(part[0] for part in data[0] if part[0]), (data[2] or "?")
 
 
-def google_chrome(text, target, source="auto"):
-    """The endpoint Chrome's translate extension uses: Google limits it separately."""
-    data = get_json("https://clients5.google.com/translate_a/t?" + urllib.parse.urlencode(
-        {"client": "dict-chrome-ex", "sl": source, "tl": target, "q": text}))
-    first = data[0]
-    return (first[0], first[1]) if isinstance(first, list) else (first, "?")
-
-
 def mymemory(text, target, source="auto"):
     """Free with a daily limit. It needs the source language, so it only takes
     Cyrillic messages (as Russian) and Turkish-looking ones."""
@@ -201,7 +193,7 @@ def mymemory(text, target, source="auto"):
     return data["responseData"]["translatedText"], source
 
 
-# The keys of the services that need one (DeepL, Microsoft). TF2 Toolbox points this at its settings,
+# The key of the service that needs one (DeepL). TF2 Toolbox points this at its settings,
 # so a key saved while it runs (setup, secrets file) is used at once. Empty: those services are skipped.
 KEYS = {}
 
@@ -213,9 +205,8 @@ def post_json(url, body, headers):
         return json.loads(resp.read().decode("utf-8"))
 
 
-# Google's codes where DeepL / Microsoft use another one.
+# Google's codes where DeepL uses another one.
 DEEPL_TARGETS = {"en": "EN-US", "pt": "PT-BR", "zh-CN": "ZH-HANS", "iw": "HE", "no": "NB"}
-MICROSOFT_CODES = {"zh-CN": "zh-Hans", "iw": "he", "tl": "fil", "no": "nb"}
 
 
 def deepl(text, target, source="auto"):
@@ -234,35 +225,15 @@ def deepl(text, target, source="auto"):
 deepl.needs_key = "deepl_api_key"
 
 
-def microsoft(text, target, source="auto"):
-    """Microsoft Translator (Azure, free tier F0: 2 million characters a month). A key made in a
-    region (not "Global") also needs that region, e.g. westeurope."""
-    params = {"api-version": "3.0", "to": MICROSOFT_CODES.get(target, target)}
-    if source != "auto":
-        params["from"] = MICROSOFT_CODES.get(source, source)
-    headers = {"Ocp-Apim-Subscription-Key": KEYS.get("microsoft_translator_key", "")}
-    region = (KEYS.get("microsoft_translator_region") or "").strip()
-    if region and region.lower() != "global":
-        headers["Ocp-Apim-Subscription-Region"] = region
-    data = post_json("https://api.cognitive.microsofttranslator.com/translate?" + urllib.parse.urlencode(params),
-                     [{"Text": text}], headers)
-    lang = (data[0].get("detectedLanguage") or {}).get("language") or source
-    return data[0]["translations"][0]["text"], lang
-
-
-microsoft.needs_key = "microsoft_translator_key"
-
-
-# In this order: Google (free, no key), then DeepL and Microsoft (free keys, used when Google says
-# "too many requests"), then Google's second address and MyMemory as the last resort.
-TRANSLATORS = [google, deepl, microsoft, google_chrome, mymemory]
+# In this order: Google (free, no key), then DeepL (free key, when you made one), then MyMemory.
+# Each is asked only when the one before it fails.
+TRANSLATORS = [google, deepl, mymemory]
 resting_until = {}   # translator -> time it may be tried again after "too many requests"
 cache = {}           # (text, target, source) -> (translation, lang): chat repeats a lot
 
 
-SERVICE_NAMES = {"google": "Google", "deepl": "DeepL", "microsoft": "Microsoft Translator",
-                 "google_chrome": "Google's second address", "mymemory": "MyMemory"}
-REST_CODES = (403, 429, 456)  # too many requests / out of free characters (DeepL says 456, Microsoft 403)
+SERVICE_NAMES = {"google": "Google", "deepl": "DeepL", "mymemory": "MyMemory"}
+REST_CODES = (403, 429, 456)  # too many requests / out of free characters (DeepL says 456)
 
 
 def active_translators():
@@ -287,8 +258,8 @@ def translator_health(now=None):
 
 
 def translate(text, target, source="auto"):
-    """Returns (translation, source_lang). Tries the services in turn (Google, DeepL, Microsoft,
-    then the last resorts): one that says "too many requests" is left alone for 15 minutes."""
+    """Returns (translation, source_lang). Tries the services in turn (Google, DeepL,
+    MyMemory): one that says "too many requests" is left alone for 15 minutes."""
     if (text, target, source) in cache:
         return cache[(text, target, source)]
     error = None
@@ -411,7 +382,7 @@ def translate_chat(msg, target):
 
 
 def translate_any(text, target):
-    """For !speak: translate_chat, and when the Google services are resting, MyMemory with the
+    """For !speak: translate_chat, and when Google and DeepL can't, MyMemory with the
     source guessed (Cyrillic: Russian, Turkish-looking: Turkish, else English)."""
     try:
         return translate_chat(text, target)
@@ -750,7 +721,7 @@ def start_translator(master=None, chat_lines=None):
 
 def main():
     single_instance("tf2_chat_translator")
-    try:  # run on its own: the DeepL / Microsoft keys TF2 Toolbox's setup saved
+    try:  # run on its own: the DeepL key TF2 Toolbox's setup saved
         import settings
         KEYS.update(settings.load_json(settings.CONFIG_PATH, {}))
         KEYS.update(settings.load_secrets())

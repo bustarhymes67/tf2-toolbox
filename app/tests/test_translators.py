@@ -1,5 +1,4 @@
-"""The translation chain: Google first, then DeepL and Microsoft (only with a key), then the last
-resorts. Every service is faked: nothing is sent to the internet."""
+"""The translation chain: 1. Google, 2. DeepL (only with a key), 3. MyMemory. Every service is faked: nothing is sent to the internet."""
 import io
 import json
 import os
@@ -49,9 +48,8 @@ class ChainTest(unittest.TestCase):
         t.resting_until.clear()
         t.cache.clear()
 
-    def test_the_order_is_google_deepl_microsoft_then_the_last_resorts(self):
-        self.assertEqual([f.__name__ for f in self.old[0]],
-                         ["google", "deepl", "microsoft", "google_chrome", "mymemory"])
+    def test_the_order_is_google_deepl_mymemory(self):
+        self.assertEqual([f.__name__ for f in self.old[0]], ["google", "deepl", "mymemory"])
 
     def test_google_answers_first(self):
         t.TRANSLATORS = [self.fake("google"), self.fake("deepl", key="deepl_api_key")]
@@ -59,23 +57,29 @@ class ChainTest(unittest.TestCase):
         self.assertEqual(t.translate("привет", "en"), ("google:привет", "ru"))
         self.assertEqual(self.asked, ["google"])
 
-    def test_deepl_then_microsoft_take_over_when_google_rests(self):
+    def test_deepl_takes_over_when_google_rests(self):
+        t.TRANSLATORS = [self.fake("google", error=too_many()), self.fake("deepl", key="deepl_api_key"),
+                         self.fake("mymemory")]
+        t.KEYS.update(deepl_api_key="k")
+        self.assertEqual(t.translate("привет", "en")[0], "deepl:привет")
+        self.assertEqual(self.asked, ["google", "deepl"])
+
+    def test_mymemory_when_google_and_deepl_rest(self):
         t.TRANSLATORS = [self.fake("google", error=too_many()),
-                         self.fake("deepl", error=too_many(456), key="deepl_api_key"),
-                         self.fake("microsoft", key="microsoft_translator_key"), self.fake("mymemory")]
-        t.KEYS.update(deepl_api_key="k", microsoft_translator_key="k")
-        self.assertEqual(t.translate("привет", "en")[0], "microsoft:привет")
-        self.assertEqual(self.asked, ["google", "deepl", "microsoft"])
+                         self.fake("deepl", error=too_many(456), key="deepl_api_key"), self.fake("mymemory")]
+        t.KEYS.update(deepl_api_key="k")
+        self.assertEqual(t.translate("привет", "en")[0], "mymemory:привет")
+        self.assertEqual(self.asked, ["google", "deepl", "mymemory"])
         self.asked.clear()
         t.translate("пока", "en")  # both resting now: not asked again
-        self.assertEqual(self.asked, ["microsoft"])
+        self.assertEqual(self.asked, ["mymemory"])
         state, text = t.translator_health()
         self.assertEqual(state, "warn")
         self.assertIn("Google, DeepL", text)
 
     def test_a_service_without_a_key_is_skipped(self):
         t.TRANSLATORS = [self.fake("google", error=too_many()), self.fake("deepl", key="deepl_api_key"),
-                         self.fake("microsoft", key="microsoft_translator_key"), self.fake("mymemory")]
+                         self.fake("mymemory")]
         self.assertEqual(t.translate("привет", "en")[0], "mymemory:привет")
         self.assertEqual(self.asked, ["google", "mymemory"])
 
@@ -111,25 +115,6 @@ class ServiceTest(unittest.TestCase):
             t.deepl("takım kötü", "en", "tr")
         self.assertTrue(self.sent[0].full_url.startswith("https://api.deepl.com/"))
         self.assertEqual(json.loads(self.sent[0].data)["source_lang"], "TR")
-
-    def test_microsoft(self):
-        t.KEYS.update(microsoft_translator_key="m", microsoft_translator_region="westeurope")
-        with self.answer([{"detectedLanguage": {"language": "ru", "score": 1.0},
-                           "translations": [{"text": "hello", "to": "en"}]}]):
-            self.assertEqual(t.microsoft("привет", "en"), ("hello", "ru"))
-        req = self.sent[0]
-        self.assertIn("api-version=3.0", req.full_url)
-        self.assertIn("to=en", req.full_url)
-        self.assertEqual(req.get_header("Ocp-apim-subscription-key"), "m")
-        self.assertEqual(req.get_header("Ocp-apim-subscription-region"), "westeurope")
-        self.assertEqual(json.loads(req.data), [{"Text": "привет"}])
-
-    def test_microsoft_global_key_sends_no_region(self):
-        t.KEYS.update(microsoft_translator_key="m", microsoft_translator_region="")
-        with self.answer([{"translations": [{"text": "hallo", "to": "de"}]}]):
-            self.assertEqual(t.microsoft("hello", "zh-CN", "en"), ("hallo", "en"))
-        self.assertIsNone(self.sent[0].get_header("Ocp-apim-subscription-region"))
-        self.assertIn("to=zh-Hans", self.sent[0].full_url)
 
 
 if __name__ == "__main__":

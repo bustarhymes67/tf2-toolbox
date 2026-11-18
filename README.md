@@ -38,7 +38,7 @@ The setup does all of this for you:
 | Steam API key (optional) | Opens [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) and tells you what to click. | Type `localhost`, click **Register**, copy the key, paste it in the black window. |
 | steamhistory.net key (optional) | Opens [steamhistory.net/account#developer](https://steamhistory.net/account#developer). | Log in with Steam, make a key, paste it. |
 | HoovyGPT (optional) | Opens [aistudio.google.com/api-keys](https://aistudio.google.com/api-keys) (Gemini, the main AI), then [console.groq.com/keys](https://console.groq.com/keys) (Groq, the backup AI). Saves the keys and lets HoovyGPT talk. | Make each key, paste it. |
-| Translation backups (optional) | Opens [deepl.com/pro-api](https://www.deepl.com/pro-api) (DeepL API Free, 500,000 characters a month), then the [Azure Translator page](https://portal.azure.com/#create/Microsoft.CognitiveServicesTextTranslation) (Microsoft, free tier F0, 2 million characters a month). The order is: Google (no key), DeepL, Microsoft, Google's second address, MyMemory. Each one is asked only when the one before it fails (an error, or "too many requests": then it rests 15 minutes). Without these keys it goes Google, Google's second address, MyMemory. MyMemory only does Russian (Cyrillic) and Turkish-looking lines. | Make each key, paste it. Both ask for a card to check you're a person; the free plans cost nothing. |
+| Translation backup (optional) | Opens [deepl.com/pro-api](https://www.deepl.com/pro-api) (DeepL API Free, 500,000 characters a month). Chat is translated in this order: 1. Google Translate (no key), 2. DeepL (when you made a key), 3. MyMemory. Each one is asked only when the one before it fails, for example "too many requests" in a busy lobby. | Make the key, paste it. DeepL asks for a card to check you're a person; the free plan costs nothing. |
 | Start | Starts TF2 and the scanner. | Push **Enter**. |
 
 All keys are free. To add a key later, open `1 - Install.bat` again. A scanner that is already running picks up a new key by itself within a few seconds.
@@ -179,7 +179,7 @@ None of these is a cheat command. None needs `sv_cheats`, and each one is someth
 | Steam's `localconfig.vdf` | Only the setup, only while Steam is closed: it adds the launch options above to TF2's launch options. A backup is saved next to it first. You can see the result in Steam > TF2 > Properties. |
 | Windows on top of the game | The player list, the mini HUD and the translations are ordinary Windows windows that float above TF2, like a Discord overlay window. Nothing is drawn **inside** the game. |
 | F8 / F9 | Windows' `RegisterHotKey`: Windows tells the toolbox when these 2 keys are pressed. It doesn't see any other key, and it never presses keys or moves the mouse. |
-| Internet | Steam Web API, steamhistory.net, cheater lists, Google / DeepL / Microsoft (translation), Gemini / Groq (HoovyGPT). These are requests from the toolbox, never through TF2 and never to the game server. |
+| Internet | Steam Web API, steamhistory.net, cheater lists, Google / DeepL / MyMemory (translation), Gemini / Groq (HoovyGPT). These are requests from the toolbox, never through TF2 and never to the game server. |
 
 ### What it never touches
 
@@ -261,7 +261,7 @@ once the match ends or you join another server.
 
 Your API keys and the RCON password are not in this folder at all. They're in
 `~/.secrets/tf2translator/.env`, as `KEY=value` lines (`STEAM_API_KEY`, `STEAMHISTORY_API_KEY`,
-`RCON_PASSWORD`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `DEEPL_API_KEY`, `MICROSOFT_TRANSLATOR_KEY`). Keys found in an older `scanner_config.json`
+`RCON_PASSWORD`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `DEEPL_API_KEY`). Keys found in an older `scanner_config.json`
 are moved there the next time the scanner starts.
 See `.gitignore`.
 

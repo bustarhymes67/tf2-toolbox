@@ -322,27 +322,16 @@ def main():
         print("No AI key was saved, so HoovyGPT stays off. Run '1 - Install.bat' again to add one.")
 
     n += 1
-    step(n, total, "Chat translation backups (free, optional)")
-    print("Chat is translated in this order: Google (no key), DeepL, Microsoft Translator, Google's")
-    print("second address, MyMemory. Each one is asked only when the one before it fails (for example")
-    print("'too many requests' in a busy lobby). Without these keys it goes Google, Google's second")
-    print("address, MyMemory (weaker, and only Russian and Turkish). Both sites ask for a card to")
-    print("check you're a person; their free plans cost nothing.")
-    ask_key(cfg, "deepl_api_key", "DeepL API key (first backup)", "https://www.deepl.com/pro-api",
+    step(n, total, "Chat translation backup (free, optional)")
+    print("Chat is translated in this order: 1. Google (no key), 2. DeepL (with this key),")
+    print("3. MyMemory. Each one is asked only when the one before it fails, for example 'too many")
+    print("requests' in a busy lobby. DeepL asks for a card to check you're a person; the free plan")
+    print("costs nothing.")
+    ask_key(cfg, "deepl_api_key", "DeepL API key", "https://www.deepl.com/pro-api",
             ["Scroll to the plans. Under 'DeepL API Free' click 'Sign up for free' (500,000 characters a month).",
              "A normal DeepL account has no API key: this plan adds one, also to an account you already have.",
              "Then in your account, open the 'API Keys' tab (next to Account and Clients).",
              "Copy the key (it ends with :fx)."])
-    if ask_key(cfg, "microsoft_translator_key", "Microsoft Translator key (second backup)",
-               "https://portal.azure.com/#create/Microsoft.CognitiveServicesTextTranslation",
-               ["Log in with a Microsoft account (make a free Azure account if it asks).",
-                "Resource group: 'Create new', any name. Region: Global. Name: anything.",
-                "Pricing tier: 'F0 (Free)' (2 million characters a month). Click 'Review + create', then 'Create'.",
-                "Click 'Go to resource', then 'Keys and Endpoint' on the left.",
-                "Copy 'KEY 1'."]):
-        region = input("The Region you picked (press Enter for Global): ").strip()
-        cfg["microsoft_translator_region"] = "" if region.lower() in ("", "global") else region
-        scanner.save_config(cfg)
 
     if keys_only:
         return
