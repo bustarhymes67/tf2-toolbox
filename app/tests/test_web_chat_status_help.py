@@ -45,9 +45,9 @@ class WebChatStatusHelpTest(unittest.TestCase):
             self.assertFalse(a.cfg["who_command"])
             act("chat_command", "speak")
             self.assertFalse(a.cfg["translate_command"])
-            act("chat_command", "info:top")
-            self.assertFalse(a.cfg["info_commands"]["top"])
-            self.assertFalse(next(c["on"] for c in state()["commands"] if c["id"] == "info:top"))
+            act("chat_command", "info:stats")
+            self.assertFalse(a.cfg["info_commands"]["stats"])
+            self.assertFalse(next(c["on"] for c in state()["commands"] if c["id"] == "info:stats"))
             # !speak mutes: the count, and a click unmutes everyone.
             a.cfg["speak_muted"] = [123, 456]
             self.assertEqual(state()["muted"], 2)

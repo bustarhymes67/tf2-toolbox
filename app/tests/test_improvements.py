@@ -365,6 +365,7 @@ class SaveConfigTest(unittest.TestCase):
             cfg = settings.load_config()
             self.assertFalse(cfg["info_commands"]["check"])
             self.assertTrue(cfg["info_commands"]["ip"])  # one that came later: on
+            self.assertNotIn("top", cfg["info_commands"])  # a removed command: dropped
 
     def test_the_old_windows_settings_are_dropped(self):
         with temp_settings():

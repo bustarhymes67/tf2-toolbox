@@ -179,6 +179,8 @@ CLASS_WEAPONS = {
     "Spy": "knife eternal_reward kunai big_earner black_rose sharp_dresser spy_cicle voodoo_pin "
            "revolver ambassador letranger enforcer diamondback taunt_spy",
 }
+# Spy knives: a crit kill with one of these is a backstab.
+SPY_KNIVES = set("knife eternal_reward kunai big_earner black_rose sharp_dresser spy_cicle voodoo_pin".split())
 WEAPON_CLASS = {w: cls for cls, names in CLASS_WEAPONS.items() for w in names.split()}
 NOT_A_WEAPON = {"world", "player", "bleed_kill", "telefrag", "tf_generic_bomb"}
 # Readable names for kill-feed weapons whose names aren't obvious.

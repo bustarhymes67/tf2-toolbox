@@ -188,6 +188,40 @@ def friend_ids(key, sid):
     return {int(f["steamid"]) for f in resp.get("friendslist", {}).get("friends", [])}
 
 
+TF2_CLASSES = ("Scout", "Soldier", "Pyro", "Demoman", "Heavy", "Engineer", "Medic", "Sniper", "Spy")
+
+
+def tf2_stats(key, sid):
+    """A player's lifetime TF2 stats from Steam, the same ones as the Records screen in TF2's menu:
+    {(class, "accum" or "max", stat): value}, the stat lower case ("inumberofkills"). "accum" is the
+    lifetime total, "max" the best in one life. None when their game details are private (Steam then
+    answers with an error or no stats). Mann vs. Machine stats ("Scout.mvm.accum...") are left out."""
+    try:
+        resp = steam_get("ISteamUserStats/GetUserStatsForGame/v2", key=key, steamid=sid, appid=440)
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 403, 500):  # private, or never played
+            return None
+        raise
+    found = {}
+    for stat in (resp.get("playerstats") or {}).get("stats") or []:
+        parts = str(stat.get("name", "")).split(".")
+        if len(parts) == 3 and parts[0] in TF2_CLASSES and parts[1] in ("accum", "max"):
+            found[(parts[0], parts[1], parts[2].lower())] = stat.get("value", 0)
+    return found or None
+
+
+def tf2_stats_lookup(key, sid, asked, events):
+    """Background thread for !mystats: sends ("mystats", sid, asked, stats or why not) back."""
+    try:
+        stats = tf2_stats(key, sid)
+        result = stats if stats else "private"
+    except urllib.error.HTTPError as e:
+        result = "invalid key" if e.code == 401 else f"error {e.code}"
+    except (OSError, ValueError, KeyError):
+        result = "offline"
+    events.put(("mystats", sid, asked, result))
+
+
 def steam_level(key, sid):
     return steam_get("IPlayerService/GetSteamLevel/v1", key=key, steamid=sid)["response"].get("player_level")
 

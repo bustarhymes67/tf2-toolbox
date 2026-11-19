@@ -34,7 +34,7 @@ from settings import (HERE, FAKE_IPS_PATH, MARKS_PATH, SECRETS_PATH, SEEN_PATH, 
 from game_log import (G15_DONE, G15_RE, G15_TEAMS, GC_TEAM_COLOR, HOSTNAME_RE, IDLE_KICK, KILL_RE, LOBBY_HEADER_RE,
     PLAYERS_RE,
     LOBBY_MEMBER_RE, MAP_RE, NOT_A_WEAPON, NO_LOBBY_RE, PENDING, STATUS_HEADER_RE, STATUS_RE,
-    STEAM64_BASE, WEAPON_CLASS, CLASS_MAX_HEALTH, connected_seconds, current_match_lines, is_sniper_weapon, my_steamid,
+    SPY_KNIVES, STEAM64_BASE, WEAPON_CLASS, CLASS_MAX_HEALTH, connected_seconds, current_match_lines, is_sniper_weapon, my_steamid,
     server_label, to_steam64)
 from player_flags import (Player, RANDOM_CRIT_WEAPONS, crit_flag, evaluate, friend_flags, headshot_flag,
     name_thieves)
@@ -84,6 +84,8 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
         self.classes = {}         # sid -> class, from the weapon of their latest kill
         self.streaks = {}         # sid -> [current killstreak, best this match]
         self.weapons = {}         # sid -> Counter of kills per weapon
+        self.stab_kills = Counter()  # sid -> backstabs this match (a Spy knife's crit kill)
+        self.death_kinds = {}     # sid -> Counter of "backstab" / "headshot" deaths, for !roast
         self.all_crits = {}       # sid -> [all kills, of which crits] for Say crits
         self.chat_queue = deque()      # your own chat actions: first in line, see send_next_chat
         self.announce_queue = deque()  # (queued at, command, text): lines the scanner says by itself
@@ -301,6 +303,12 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
                 self.gardens[killer] = self.gardens.get(killer, 0) + sign
             if m["weapon"] not in NOT_A_WEAPON:
                 self.weapons.setdefault(killer, Counter())[m["weapon"]] += sign
+            kind = ("backstab" if m["crit"] and m["weapon"] in SPY_KNIVES
+                    else "headshot" if m["crit"] and is_sniper_weapon(m["weapon"]) else None)
+            if kind == "backstab":
+                self.stab_kills[killer] += sign
+            if kind and (victim_sid := self.sid_by_name(m["victim"])):
+                self.death_kinds.setdefault(victim_sid, Counter())[kind] += sign
             if sign > 0:
                 streak = self.streaks.setdefault(killer, [0, 0])
                 streak[0] += 1
@@ -369,7 +377,8 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
         self.left_server = False
         for stats in (self.kills, self.crits, self.all_crits, self.gardens, self.classes,
                       self.streaks, self.weapons, self.g15, self.board, self.board_prev,
-                      self.board_streaks, self.fake_deaths, self.pair_kills):
+                      self.board_streaks, self.fake_deaths, self.pair_kills, self.stab_kills,
+                      self.death_kinds):
             stats.clear()
         self.pending_deaths = []  # chat duels carry on: they last until TF2 closes or "!duel reset"
         self.connected_before = set()  # a map change isn't everyone leaving
@@ -490,6 +499,8 @@ class App(ChatMixin, DuelsMixin, InfoCommandsMixin, HudMixin, AIMixin, ScreensMi
                 self.players[event[1]].summary = event[2]
         elif kind == "ai":
             self.ai_answered(*event[1:])
+        elif kind == "mystats":
+            self.mystats_answered(*event[1:])
         elif kind == "translate_say":
             self.say_translated(*event[1:])
         elif kind == "translate_failed":

@@ -800,7 +800,7 @@ class ChatMixin:
         return " | ".join(parts)
 
     def say_kill_race(self):
-        """The Players page's Kill race button: posts the same line as !top (info_commands.top_line)."""
+        """The Players page's Kill race button: posts info_commands.top_line."""
         line = self.top_line(unknown=None)
         if not line:
             self.notify("No scores yet (needs -g15)")

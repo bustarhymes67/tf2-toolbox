@@ -48,7 +48,7 @@ class HelpPageTest(unittest.TestCase):
             cards = g.on_screen_thread(lambda: help_state(a))["cards"]
             shown = {" ".join(filter(None, row["usage"])) for card in cards for row in card["rows"]}
             shown |= {" ".join(filter(None, c["usage"])) for c in g.on_screen_thread(lambda: chat_state(a))["commands"]}
-            for command in ("!who <name>", "!check <name>", "!medic", "!top", "!kd <name>", "!hours <name>",
+            for command in ("!who <name>", "!check <name>", "!stats", "!mystats", "!roast <name>", "!hours <name>",
                             "!cheaters", "!ip <name>", "!help", "!speak <language> <message>", "!badbot",
                             "!goodbot", "!duel <name>", "!duel scores", "F9", "F8"):
                 self.assertIn(command, shown)

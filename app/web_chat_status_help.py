@@ -139,7 +139,7 @@ def help_state(app):
          "note": "Switch it on with HoovyGPT + Duels on the HoovyGPT page."},
         {"id": "duels", "title": "Duels", "rows": rows(DUEL_COMMANDS), "note": "Duels work while HoovyGPT + Duels is on."},
         {"id": "info", "title": "Other chat commands", "rows": [],
-         "link": {"page": "Chat", "text": "!who, !check, !top and the other information commands: "
+         "link": {"page": "Chat", "text": "!who, !stats, !mystats, !roast and the other chat commands: "
                                           "switch them and see what each one does on the Chat page."},
          "note": ""},
     ]}

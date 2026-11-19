@@ -741,8 +741,8 @@ class AIMixin:
             return
         if not self.ai_on or self.ai_muted or (me and name == me.name) or msg.strip() in self.ai_said:
             return
-        if command.startswith(("!duel", "!speak", "!who", "!check", "!medic", "!top", "!kd", "!hours", "!ip",
-                               "!cheaters", "!help", "!kick")):
+        if command.startswith(("!duel", "!speak", "!who", "!check", "!stats", "!mystats", "!roast", "!hours",
+                               "!ip", "!cheaters", "!help", "!kick")):
             return  # commands the scanner answers itself
         question = f"{name}: {msg}"
         # Stats on whoever's talking and anyone they name ("hoovygpt roast Hans"), for roasts.

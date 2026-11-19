@@ -30,7 +30,7 @@ class CleanupCTest(unittest.TestCase):
             # Each Chat pill carries what its command does; Help only points to the Chat page.
             about = {c["id"]: c["about"] for c in chat["commands"]}
             self.assertTrue(all(about.values()))
-            self.assertEqual(about["info:top"], INFO_COMMANDS["top"][1])
+            self.assertEqual(about["info:stats"], INFO_COMMANDS["stats"][1])
             cards = {c["id"]: c for c in help_["cards"]}
             self.assertEqual(cards["info"]["rows"], [])
             self.assertEqual(cards["info"]["link"]["page"], "Chat")

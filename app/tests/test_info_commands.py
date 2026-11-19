@@ -25,9 +25,7 @@ class InfoCommandsTest(unittest.TestCase):
             a.flags[hank] = [(3, "1 VAC ban (36d ago)")]
             asked = [("!check han", "[CHECK] Hank (BLU) | Sniper | 87/125 HP"),
                      ("!check all", "[CHECK] BLU: 1 Sniper"),  # dan is on RED: the other team is BLU
-                     ("!medic", "[MEDIC] BLU: no Medic"),
-                     ("!top", "[TOP] Kills: RED 11 - 18 BLU | RED: tomato 8/5 | BLU: Hank 18/16"),
-                     ("!kd Hank", "[KD] Hank (BLU) | 18 kills, 16 deaths"),
+                     ("!stats", a.stats_line()),
                      ("!hours hank", "[HOURS] Hank (BLU) | 2,621 hours in TF2"),
                      ("!cheaters", "[CHEATERS] Hank (1 VAC ban)"),
                      ("!check zzz", "[CHECK] nobody here is called 'zzz'"),
@@ -43,12 +41,16 @@ class InfoCommandsTest(unittest.TestCase):
             a.board[hank].update(m_bAlive="true", m_iHealth="185")
             self.assertEqual(a.health_words(a.players[hank]), "185/125 HP (overhealed)")
             help_line = a.help_line()
-            self.assertTrue(help_line.startswith("[HELP] !who <name> | !check <name>"))
-            g.on_screen_thread(lambda: a.toggle_info_command("top"))
-            self.assertFalse(a.cfg["info_commands"]["top"])
-            self.assertNotIn("!top", a.help_line())
+            self.assertTrue(help_line.startswith("[HELP] !who"), help_line)
+            self.assertFalse(help_line.endswith("more"), help_line)  # every command named, in one message
+            self.assertIn("Kills RED 11 - 18 BLU | MVP Hank 18/16", a.stats_line())
+            for gone in ("!medic", "!top", "!kd"):
+                self.assertNotIn(gone, help_line)
+            g.on_screen_thread(lambda: a.toggle_info_command("stats"))
+            self.assertFalse(a.cfg["info_commands"]["stats"])
+            self.assertNotIn("!stats", a.help_line())
             before = len(g.sent)
-            g.say("dan", "!top", 1.0)
+            g.say("dan", "!stats", 1.0)
             self.assertEqual(len(g.sent), before)  # switched off: no answer
         Game().play(script)
 

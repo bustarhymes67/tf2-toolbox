@@ -403,7 +403,7 @@ def worker(cfg, lines, results):
         if not parsed:
             continue
         name, msg, team = parsed
-        if msg.lstrip().lower().startswith(("!speak", "!who", "!check", "!medic", "!top", "!kd", "!hours", "!ip",
+        if msg.lstrip().lower().startswith(("!speak", "!who", "!check", "!stats", "!mystats", "!roast", "!hours", "!ip",
                                             "!cheaters", "!help", "!kick")):  # TF2 Toolbox answers those itself
             continue
         if cfg["translator_languages"] == "russian" and not CYRILLIC_RE.search(msg):

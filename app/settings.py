@@ -70,9 +70,9 @@ DEFAULTS = {
     "hud_x": None,                # where you moved it; None = the top-left corner
     "hud_y": None,
     "who_command": True,          # answers "!who <name>" from anyone with that player's summary and stats (Chat page)
-    # !check, !medic, !top, !kd, !hours, !cheaters, !ip and !help (info_commands.py): each on or off.
-    "info_commands": {"check": True, "medic": True, "top": True, "kd": True, "hours": True, "cheaters": True,
-                      "ip": True, "help": True},
+    # !check, !stats, !mystats, !hours, !cheaters, !roast, !ip and !help (info_commands.py): each on or off.
+    "info_commands": {"check": True, "stats": True, "mystats": True, "hours": True, "cheaters": True,
+                      "roast": True, "ip": True, "help": True},
     "speak_muted": [],            # Steam IDs whose !speak is ignored (Mute !speak in a player's panel)
     "heavy_talks": False,         # False: HoovyGPT never says or asks anything, whatever keys are set
     "duels_on": False,            # the HoovyGPT + Duels button, kept across restarts while heavy_talks is off
@@ -157,7 +157,9 @@ def load_config():
     cfg.update(on_disk)
     for key in RETIRED:
         cfg.pop(key, None)
-    cfg["info_commands"] = {**DEFAULTS["info_commands"], **cfg["info_commands"]}  # commands added later start on
+    # Commands added later start on; removed ones (!medic, !top, !kd) are dropped.
+    cfg["info_commands"] = {name: on for name, on in {**DEFAULTS["info_commands"], **cfg["info_commands"]}.items()
+                            if name in DEFAULTS["info_commands"]}
     moved = not any(key.startswith("translator_") for key in on_disk) and move_translator_config(cfg)
     stored = load_secrets()
     for key in SECRET_KEYS:
