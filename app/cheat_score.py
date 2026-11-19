@@ -276,8 +276,9 @@ BAN_FLOOR = 1.5    # LR_RESEARCH s3: an old ban still says a little (6 y+: x1.5)
 BAN_EXTRA = 0.25   # LR_RESEARCH s3: each more ban x(1 + 0.25), counted up to 4 bans (repeat offenders 7.9%)
 BAN_MAX = 12.0     # LR_RESEARCH s3: cap for all bans together
 COMMUNITY_BAN_LR = 1.3  # LR_RESEARCH s3: community bans are rule breaking; 20% lifted within ~32 days
-SERVER_CHEAT_BAN_LR = {1: 4.0, 2: 8.0}  # LR_RESEARCH s3: admins' cheating bans, by server NETWORK (2 = 2+)
-SERVER_BAN_HALF_LIFE_Y = 3.0  # LR_RESEARCH s3: same fading as list entries
+# A server ban that names cheating (wallhack, aimbot, ESP, "cheat", "hack", ...) is PROOF, at any age:
+# the user's rule. Someone who was caught with a cheat once is treated as a cheater, full stop.
+SERVER_CHEAT_BAN_LR = 1000.0  # same weight as the demo check's proof
 SERVER_OTHER_BAN_LR = 1.1  # LR_RESEARCH s3: banned on a server for something else (mic spam, ...)
 
 
@@ -329,15 +330,10 @@ def ban_clues(app, p, now=None):
         said = f": {', '.join(reasons[:3])}{', …' if len(reasons) > 3 else ''}" if reasons else ""
         if cheat:
             n = len(networks)
-            ages = [y for y in (years_since(ban_field(ban, "timestamp") or ban_field(ban, "date"), now)
-                                for ban in cheat) if y is not None]
-            years = min(ages) if ages else None
-            why = "A server admin judged it, not Valve; servers of one community share bans, so they count once."
-            if years is not None and years >= 1:
-                why += f" The newest is {years:.0f} year{'s' * (round(years) != 1)} old, so it counts less."
-            clues.append(Clue("server_bans", fade(SERVER_CHEAT_BAN_LR[min(n, 2)], years, SERVER_BAN_HALF_LIFE_Y),
+            clues.append(Clue("server_bans", SERVER_CHEAT_BAN_LR,
                               f"banned for cheating by {n} server communit{'ies' if n > 1 else 'y'}{said}",
-                              why, source="steam"))
+                              "Caught with a cheat on a server: that counts as proof, however long ago it was.",
+                              proof=True, source="steam"))
         else:
             clues.append(Clue("server_bans", SERVER_OTHER_BAN_LR,
                               f"{len(sb)} community server ban{'s' * (len(sb) > 1)}{said}",

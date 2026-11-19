@@ -203,18 +203,20 @@ class BanTests(OwnSources):
         self.assertEqual(k["bans"].text, "1 VAC ban, last 1 year ago")
         self.assertEqual(k["community_ban"].lr, 1.3)
 
-    def test_server_bans_count_networks_and_fade(self):
+    def test_a_cheat_ban_on_a_server_is_proof_at_any_age(self):
         same = [{"Server": "Skial #1", "Reason": "aimbot"}, {"Server": "Skial #4", "Reason": "cheating"}]
         clue, = cs.ban_clues(FakeApp(), player(sourcebans=same))
-        self.assertEqual(clue.lr, 4.0)
+        self.assertTrue(clue.proof)
+        self.assertEqual(clue.lr, 1000.0)
         self.assertTrue(clue.text.startswith("banned for cheating by 1 server community"))
-        two = same + [{"Server": "bans.otherplace.net", "Reason": "wallhack"}]
-        self.assertEqual(cs.ban_clues(FakeApp(), player(sourcebans=two))[0].lr, 8.0)
-        old = [{"Server": "Skial", "Reason": "aimbot", "BanTimestamp": str(int(NOW - 3 * YEAR))}]
-        clue, = cs.ban_clues(FakeApp(), player(sourcebans=old), now=NOW)
-        self.assertAlmostEqual(clue.lr, 2.5, places=3)
+        for reason in ("wallhack", "ESP", "triggerbot", "hacking"):
+            old = [{"Server": "Skial", "Reason": reason, "BanTimestamp": str(int(NOW - 8 * YEAR))}]
+            clue, = cs.ban_clues(FakeApp(), player(sourcebans=old), now=NOW)
+            self.assertTrue(clue.proof, reason)  # 8 years old: still proof
+            self.assertEqual(cs.band_of(0.01, clue.proof), "Proven")
         other, = cs.ban_clues(FakeApp(), player(sourcebans=[{"Server": "x", "Reason": "mic spam"}]))
         self.assertEqual(other.lr, 1.1)
+        self.assertFalse(other.proof)
 
 
 class FriendTests(OwnSources):
