@@ -1,6 +1,6 @@
 """Chat commands anyone can type for information about the lobby, answered by the toolbox:
 !check <name> (class and health), !check all (the other team's classes), !stats (this match),
-!mystats (your lifetime TF2 stats from Steam), !hours <name>, !cheaters, !roast <name>, !ip <name>
+!mystats [name] (lifetime TF2 stats from Steam), !hours <name>, !cheaters, !roast <name>, !ip <name>
 and !help. Each can be switched off on the Chat page."""
 
 import random
@@ -21,9 +21,10 @@ INFO_COMMANDS = {
     "check": ("!check <name>", "A player's class and health. !check all: the other team's classes."),
     "stats": ("!stats", "This match: the map, kills per team, the best and the worst player, headshots, "
                         "backstabs and crits."),
-    "mystats": ("!mystats", "Whoever types it: their lifetime TF2 stats from Steam (hours, kills, main class) "
-                            "and their best single-life records. Needs your Steam API key; private profiles "
-                            "can't be read."),
+    "mystats": ("!mystats [name]", "Anyone can type it; the toolbox answers from your account. Alone it "
+                                   "posts the lifetime TF2 stats of whoever typed it (hours, kills, main class, "
+                                   "best single-life records), with a name it posts that player's. Uses your Steam "
+                                   "API key; players with private game details can't be read."),
     "hours": ("!hours <name>", "A player's hours in TF2 and how old their account is."),
     "cheaters": ("!cheaters", "Everyone flagged red in the lobby."),
     "roast": ("!roast <name>", "A roast built from that player's real match: their kills, deaths, nemesis, "
@@ -122,7 +123,7 @@ class InfoCommandsMixin:
         if command == "roast":
             self.roast_command(name, rest, say)
         elif command == "mystats":
-            self.mystats_command(name, say)
+            self.mystats_command(name, rest, say)
         elif command in ("check", "hours", "ip"):  # about one player, or !check all
             if command == "check" and rest.lower() == "all":
                 self.announce_chat(self.lineup_line(self.other_team_of(name)), say)
@@ -283,13 +284,22 @@ class InfoCommandsMixin:
 
     # --- !mystats: lifetime stats from Steam -------------------------------------------------
 
-    def mystats_command(self, name, say):
-        """!mystats: whoever typed it gets their lifetime TF2 stats. Steam is asked on a background
-        thread; the answer comes back as a "mystats" event (mystats_answered)."""
-        sid = self.sid_by_name(name)
-        if not sid:
-            self.announce_chat(f"[MYSTATS] Couldn't find {short(name)} on the scoreboard", say)
-            return
+    def mystats_command(self, name, rest, say):
+        """!mystats: the lifetime TF2 stats of whoever typed it; !mystats <name>: that player's (part
+        of a name works). Steam is asked on a background thread; the answer comes back as a
+        "mystats" event (mystats_answered)."""
+        if rest.lower() in ("", "me", "myself"):
+            sid = self.sid_by_name(name)
+            if not sid:
+                self.announce_chat(f"[MYSTATS] Couldn't find {short(name)} on the scoreboard. "
+                                   "Type !mystats <name>", say)
+                return
+        else:
+            p, error = self.find_player(rest, "MYSTATS")
+            if error:
+                self.announce_chat(error, say)
+                return
+            sid = p.sid
         if not self.cfg["steam_api_key"]:
             self.announce_chat("[MYSTATS] Needs a Steam API key in the toolbox", say)
             return

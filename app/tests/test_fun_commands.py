@@ -68,6 +68,13 @@ class FunCommandsTest(unittest.TestCase):
                 g.say("dan", "!mystats")
                 wait_for(g, lambda: any("private" in line for line in g.said()))
                 self.assertIn("[MYSTATS] dan | TF2 stats are private (Steam profile: Game details)", g.said())
+                g.say("dan", "!mystats toma")  # somebody else's, by part of their name
+                wait_for(g, lambda: any(line.startswith("[MYSTATS] tomato") for line in g.said()))
+                self.assertEqual(asked[-1], a.sid_by_name("tomato"))
+                self.assertIn("[MYSTATS] tomato | TF2 stats are private (Steam profile: Game details)", g.said())
+                g.say("dan", "!mystats zzz")
+                wait_for(g, lambda: "[MYSTATS] nobody here is called 'zzz'" in g.said())
+                self.assertIn("[MYSTATS] nobody here is called 'zzz'", g.said())
             finally:
                 info_commands.tf2_stats_lookup = real
         Game().play(script)

@@ -81,7 +81,7 @@ Other players (and you) can type these commands in chat. The **Help** page in th
 | `!who <name>` | Information about a player. |
 | `!check <name>` | A player's class and health. `!check all` shows the classes of the other team. |
 | `!stats` | This match: the map, kills per team, the MVP, who died most, headshots, backstabs and crits. |
-| `!mystats` | Your own lifetime TF2 stats from Steam (hours, kills, main class) and your best single-life records. Needs a Steam API key; private profiles can't be read. |
+| `!mystats [name]` | Lifetime TF2 stats from Steam (hours, kills, main class) and best single-life records. Anyone can type it and the toolbox answers from your account: alone it shows whoever typed it, with a name it shows that player. Uses your Steam API key; players with private game details can't be read. |
 | `!roast <name>` | A joke built from that player's real match: kills, deaths, nemesis, class, hours, even their cheat score. `!roast me` roasts you. |
 | `!hours <name>`, `!cheaters`, `!ip <name>`, `!help` | More information commands. |
 | `!speak <language> <message>` | Translates a message and says it in chat. |
