@@ -886,7 +886,12 @@ class ChatMixin:
             self.notify("RCON not connected: copied, paste it in chat")
 
     def say_in_chat(self):
+        """Post their summary: the summary line, and for a cheater a second line with their
+        SteamHistory link (history_line). Without RCON both are copied as one line."""
         p = self.players.get(self.selected)
         if not p:
             return
-        self.post(self.chat_text(p))
+        text, proof = self.chat_text(p), self.history_line(p)
+        if proof and self.rcon_state == "connected":
+            self.queue_chat(text)
+        self.post(proof if proof and self.rcon_state == "connected" else " | ".join(filter(None, (text, proof))))

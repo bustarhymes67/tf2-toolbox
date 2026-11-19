@@ -138,7 +138,7 @@ def preview(app, text, note=None):
 def player_previews(app, p):
     """The panel's Post buttons' messages for the selected player p, from the same App methods that
     post them (chat.py: chat_text, stats_text, friends_text, ip_line)."""
-    return {"say": preview(app, app.chat_text(p)),
+    return {"say": preview(app, "\n".join(filter(None, (app.chat_text(p), app.history_line(p))))),
             "stats": preview(app, app.stats_text(p), "No kills seen for them yet"),
             "friends": preview(app, *app.friends_text(p)),
             "ip": preview(app, app.ip_line(p))}

@@ -92,7 +92,7 @@ class ButtonsAndPreviews(unittest.TestCase):
             self.assertEqual(b["kick"][3]["text"], "Votes only work on your own team")
             p = a.players[DAN]
             # each Post button's hover is the very text the App method builds
-            self.assertEqual(b["say"][3]["text"], g.on_screen_thread(lambda: a.chat_text(p)))
+            self.assertEqual(b["say"][3]["text"], g.on_screen_thread(lambda: chr(10).join(filter(None, (a.chat_text(p), a.history_line(p))))))  # + the SteamHistory link for a cheater
             self.assertEqual(b["ip"][3]["text"], g.on_screen_thread(lambda: a.ip_line(p)))
             self.assertEqual(b["stats"][3]["text"], g.on_screen_thread(lambda: a.stats_text(p)))
             self.assertIn(b["say"][3]["head"], (web_players.SAYS_IN_CHAT, web_players.COPIES))

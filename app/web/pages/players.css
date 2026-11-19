@@ -264,3 +264,4 @@
 @media (prefers-reduced-motion: reduce){
   #p-players *,.pl-tip,.pl-menu{animation:none!important;transition:none!important}
 }
+.pl-saymsg{white-space:pre-line}  /* a cheater's summary: the line, then the SteamHistory link */
