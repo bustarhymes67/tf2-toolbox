@@ -590,7 +590,7 @@ class ChatMixin:
         if p.sid == self.me or not cheat_score.is_cheater(self, p):
             return None
         name = p.name if len(p.name) <= 24 else p.name[:23] + "…"
-        return f"{name} | bans: https://steamhistory.net/id/{p.sid}"
+        return f"{name} | ban history: https://steamhistory.net/id/{p.sid}"
 
     def toggle_who_command(self):
         """The !who pill on the Chat page."""

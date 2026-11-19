@@ -18,7 +18,7 @@ class HistoryLinkTest(unittest.TestCase):
             a.rcon_state = "connected"
             hank, dan = a.sid_by_name("Hank"), a.sid_by_name("dan")
             a.flags[hank] = [(3, "1 VAC ban (36d ago)")]
-            link = f"Hank | bans: https://steamhistory.net/id/{hank}"
+            link = f"Hank | ban history: https://steamhistory.net/id/{hank}"
             self.assertEqual(a.history_line(a.players[hank]), link)
             self.assertIsNone(a.history_line(a.players[dan]))
 

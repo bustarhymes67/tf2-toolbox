@@ -160,7 +160,7 @@ class TranslateCommandTest(unittest.TestCase):
             while time.time() < deadline and len(g.said()) < 3:
                 time.sleep(0.2)
             self.assertEqual(g.said(), ["Hank (Russia) | VAC banned 36 days ago", "Hank | Sniper | 9/10 headshots (90%)",
-                                        f"Hank | bans: https://steamhistory.net/id/{hank}"])  # summary, stats, then the proof link (a cheater)
+                                        f"Hank | ban history: https://steamhistory.net/id/{hank}"])  # summary, stats, then the proof link (a cheater)
             self.assertEqual(a.chat_text(a.players[hank]), "Hank | VAC banned 36 days ago")  # the Summary button: as before
             self.assertEqual(a.chat_text(a.players[a.sid_by_name("dan")], country=True),
                              a.chat_text(a.players[a.sid_by_name("dan")]))  # no country set: nothing added
