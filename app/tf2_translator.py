@@ -114,7 +114,7 @@ KEY_COLOR = "#010101"  # painted pixels of this color become transparent
 
 # The overlay's look: the Tactical style of TF2 Toolbox's window (the same colours as its settings.py).
 UNLOCKED_BG = "#07090c"   # the whole window while it's unlocked (F8)
-LINE_BG = "#05070a"       # the dark box behind each line, so it reads on any map
+TEXT_EDGE = "#0b0b0b"     # the thin dark edge around each line's text (like TF2's own chat), so it reads on any map
 EDGE = "#283342"          # thin lines: the unlocked window's outline, the buttons
 ACCENT = "#2de2c8"        # the bar left of each line, the language tag, the chosen button
 ON_ACCENT = "#03211d"     # dark text on the accent
@@ -689,20 +689,22 @@ class Overlay:
             x0, y0, x1, y1 = c.bbox(item)
             c.create_rectangle(x, y0 - 1, x1 + 5, y1 + 1, outline=TEAM_FG, tags=(tag,))
             x = x1 + 13
-        item = c.create_text(x, pad, text=e["name"], anchor="nw", font=self.name_font,
-                             fill=TEAM_FG if e["team"] else NAME_FG, tags=(tag,))
+        item = self._edged_text(x, pad, e["name"], self.name_font, TEAM_FG if e["team"] else NAME_FG, tag)
         x = c.bbox(item)[2] + 8
         wrap = max(self.cfg["translator_width"] - 15 - x, 150)
-        item = c.create_text(x, pad, text=e["text"], anchor="nw", width=wrap, font=self.font,
-                             fill=LINE_TEXT, tags=(tag,))
-        _, _, right, low = c.bbox(tag)
+        self._edged_text(x, pad, e["text"], self.font, LINE_TEXT, tag, width=wrap)
+        _, _, _, low = c.bbox(tag)
         height = low + pad
-        box = c.create_rectangle(5, 0, min(right + 10, self.cfg["translator_width"] - 1), height, fill=LINE_BG, outline="",
-                                 tags=(tag,))
-        c.create_rectangle(5, 0, 7, height, fill=ACCENT, outline="", tags=(tag,))
-        c.tag_lower(box)
         c.move(tag, 0, bottom - height)
         return bottom - height
+
+    def _edged_text(self, x, y, text, font, fill, tag, width=0):
+        """Text with a 1 px dark edge and a small shadow, no box behind it: the game shows through,
+        as with TF2's own chat. Returns the text item (the edge copies sit under it)."""
+        c = self.canvas
+        for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1), (2, 2)):
+            c.create_text(x + dx, y + dy, text=text, anchor="nw", width=width, font=font, fill=TEXT_EDGE, tags=(tag,))
+        return c.create_text(x, y, text=text, anchor="nw", width=width, font=font, fill=fill, tags=(tag,))
 
     def start(self, results, toggles):
         """Schedules the overlay's updates on the Tk loop that's already running."""

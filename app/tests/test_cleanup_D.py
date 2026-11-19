@@ -88,15 +88,16 @@ class OverlayTest(TkCase):
         o.redraw()
         return o
 
-    def test_lines_are_boxes_with_tags_and_click_anywhere(self):
+    def test_lines_have_no_box_but_edged_text_and_a_tag(self):
         o = self.overlay()
         c = o.canvas
         self.assertEqual(c.cget("bg"), KEY_COLOR)        # locked: see-through around the lines
         for i in (0, 1):
             items = c.find_withtag(f"e{i}")
             fills = {c.itemcget(x, "fill") for x in items if c.type(x) == "rectangle"}
-            self.assertIn(tf2_translator.LINE_BG, fills)  # its dark box is part of it, so a click on it copies
-            self.assertIn(tf2_translator.ACCENT, fills)
+            self.assertEqual(fills - {""}, {tf2_translator.ACCENT})  # only the RU tag (+ TEAM outline): no dark box
+            texts = [c.itemcget(x, "fill") for x in items if c.type(x) == "text"]
+            self.assertIn(tf2_translator.TEXT_EDGE, texts)  # the dark edge that keeps it readable on any map
             self.assertIn("RU", [c.itemcget(x, "text") for x in items if c.type(x) == "text"])
         team = [c.itemcget(x, "text") for x in c.find_withtag("e1") if c.type(x) == "text"]
         self.assertIn("TEAM", team)
