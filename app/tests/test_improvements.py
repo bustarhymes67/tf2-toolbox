@@ -157,13 +157,15 @@ class TranslateCommandTest(unittest.TestCase):
             a.kills[hank] = [10, 9]
             g.say("dan", "!who han", 0.2)  # part of a name, any case
             deadline = time.time() + 15
-            while time.time() < deadline and len(g.said()) < 2:
+            while time.time() < deadline and len(g.said()) < 3:
                 time.sleep(0.2)
-            self.assertEqual(g.said(), ["Hank (Russia) | VAC banned 36 days ago", "Hank | Sniper | 9/10 headshots (90%)"])  # summary with their country, then stats
+            self.assertEqual(g.said(), ["Hank (Russia) | VAC banned 36 days ago", "Hank | Sniper | 9/10 headshots (90%)",
+                                        f"Hank | bans: https://steamhistory.net/id/{hank}"])  # summary, stats, then the proof link (a cheater)
             self.assertEqual(a.chat_text(a.players[hank]), "Hank | VAC banned 36 days ago")  # the Summary button: as before
             self.assertEqual(a.chat_text(a.players[a.sid_by_name("dan")], country=True),
                              a.chat_text(a.players[a.sid_by_name("dan")]))  # no country set: nothing added
             self.assertIn("VAC banned 36 days ago", g.said()[0])
+            self.assertIsNone(a.history_line(a.players[a.sid_by_name("dan")]))  # not a cheater: no link
             a.classes.pop(hank), a.kills.pop(hank)  # nothing known this match: just the summary
             time.sleep(0.5)
             def said(text):  # TF2's spam limit makes later lines wait their turn

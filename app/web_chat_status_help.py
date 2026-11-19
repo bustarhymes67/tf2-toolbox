@@ -29,7 +29,8 @@ CHAT_TOGGLES = {key: method for key, _, _, method, _, _ in CHAT_SETTINGS}
 CONNECTIONS = (("TF2", "rcon_state", "TF2", "RCON"), ("Steam", "api_state", "Steam", "bans, hours, age"),
                ("History", "sh_state", "Bans", "server bans"), ("Lists", "lists_state", "Cheater lists", "cheater lists"))
 LAST_POSTS = 8  # lines of the toolbox's own chat shown on the Chat page
-WHO_ABOUT = "A player's summary and stats, in two messages. Part of a name works: !who iva finds Ivan."
+WHO_ABOUT = ("A player's summary and stats in chat; for a cheater also their SteamHistory link with the bans. "
+             "Part of a name works: !who iva finds Ivan.")
 SPEAK_ABOUT = "Says a message in another language in chat, like !speak russian hello. More on the Help page."
 
 

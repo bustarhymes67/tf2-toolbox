@@ -558,9 +558,9 @@ class ChatMixin:
             self.announce_chat(part, "say_team" if team else "say")
 
     def who_command(self, name, msg, team):
-        """Answers "!who <name>" typed by anyone (you too) with two messages about that player:
-        the line the Summary button says, then the Stats line (left out while they have no
-        stats this match). Part of a name works, like with !duel; when it fits nobody or
+        """Answers "!who <name>" typed by anyone (you too) with up to three messages about that
+        player: the line the Summary button says, the Stats line (left out while they have no
+        stats this match), and for a cheater their SteamHistory link, where anyone can check the bans. Part of a name works, like with !duel; when it fits nobody or
         several players, it says so instead. Answered in team chat when it was typed there."""
         if not (m := WHO_RE.match(msg)) or not self.cfg["who_command"] or self.rcon_state != "connected":
             return
@@ -580,6 +580,17 @@ class ChatMixin:
             self.announce_chat(self.chat_text(matches[0], country=True), command)
             if stats := self.stats_text(matches[0]):
                 self.announce_chat(stats, command)
+            if proof := self.history_line(matches[0]):
+                self.announce_chat(proof, command)
+
+    def history_line(self, p):
+        """For a player the toolbox counts as a cheater: a chat line with their SteamHistory page,
+        where everyone can see the bans that prove it. None for everyone else."""
+        import cheat_score
+        if p.sid == self.me or not cheat_score.is_cheater(self, p):
+            return None
+        name = p.name if len(p.name) <= 24 else p.name[:23] + "…"
+        return f"{name} | bans: https://steamhistory.net/id/{p.sid}"
 
     def toggle_who_command(self):
         """The !who pill on the Chat page."""
