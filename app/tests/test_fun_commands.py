@@ -104,13 +104,16 @@ class FunCommandsTest(unittest.TestCase):
             a.pair_kills[(hank, dan)] = 6
             a.classes[dan] = "Spy"
             roasts = a.roasts(a.players[dan])
-            self.assertIn("Hank has killed dan 6 times (0 back). dan is now legally Hank's pet.", roasts)
-            self.assertIn("dan: 0 kills, 9 deaths. The enemy team is reporting them for being too nice.", roasts)
-            self.assertIn("dan is a Spy with 0 backstabs. Mostly just walking behind people politely.", roasts)
-            self.assertTrue(any(line.startswith("Ran a cheat scan on dan:") for line in roasts))
-            good = a.roasts(a.players[hank])[0]
-            self.assertTrue(good.startswith("Hank is 15-2. Can't roast that. Ran a cheat scan instead..."), good)
-            self.assertEqual(a.roasts(a.players[me]), ["tomato is 4-5. Too average to roast. That's the roast."])
+            self.assertIn("Hank 6 dan 0. dan is a free daily for Hank", roasts)
+            self.assertIn("dan 0 kills. playing on peaceful mode", roasts)
+            self.assertIn("dan is 0-9. dogwater. absolute dogwater. uninstall.", roasts)
+            self.assertIn("dan, spy with 0 stabs. bro's a 125hp tourist", roasts)
+            self.assertFalse(any("cheat scan" in line for line in roasts))
+            self.assertIn(a.roasts(a.players[hank])[0], ("Hank 15-2 in casual. bro tryharding like there's prize money",))
+            self.assertEqual(a.roasts(a.players[me]), ["tomato 4-5. aggressively mid", "tomato 4-5. background npc, no dialogue"])
+            # The rotation: random among everything that fits, never one of the last 6 again.
+            said = [a.roast_line(a.players[dan]) for _ in range(len(roasts))]
+            self.assertEqual(len(set(said[:6])), 6, said)
             seen = {a.roast_line(a.players[dan]) for _ in range(6)}
             self.assertGreater(len(seen), 1)  # not the same line every time
             for line in seen:

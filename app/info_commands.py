@@ -10,7 +10,6 @@ import time
 from collections import Counter, deque
 
 from chat import fits, CHAT_LIMIT
-import cheat_score
 from game_log import CLASS_MAX_HEALTH, PENDING
 from lookups import TF2_CLASSES, tf2_stats_lookup
 from player_flags import age_in_words
@@ -28,13 +27,14 @@ INFO_COMMANDS = {
     "hours": ("!hours <name>", "A player's hours in TF2 and how old their account is."),
     "cheaters": ("!cheaters", "Everyone flagged red in the lobby."),
     "roast": ("!roast <name>", "A roast built from that player's real match: their kills, deaths, nemesis, "
-                               "class, hours and cheat score. !roast me roasts yourself."),
+                               "class, hours and account age. !roast me roasts yourself."),
     "ip": ("!ip <name>", "A player's fake IPv4 (the same one for them all match)."),
     "help": ("!help", "The commands players can type."),
 }
 INFO_RE = re.compile(r"^\s*!(?P<command>" + "|".join(INFO_COMMANDS) + r")\b\s*(?P<rest>.*?)\s*$", re.I)
 OTHER_TEAM = {"RED": "BLU", "BLU": "RED"}
 SHORT_CLASS = {"Engineer": "Engi"}  # so a whole team fits in one message
+ROAST_MEMORY = 6     # a player never gets one of their last 6 roasts again (while others fit)
 MYSTATS_CACHE = 600   # seconds a player's Steam stats are kept (in memory only) before asking again
 
 
@@ -341,17 +341,18 @@ class InfoCommandsMixin:
         self.announce_chat(self.roast_line(p), say)
 
     def roast_line(self, p):
-        """One roast for p: one of the two best-fitting ones, never one of their last 3 again."""
+        """One roast for p, picked at random from every line that fits their match, never one of
+        the last ROAST_MEMORY said about them (unless nothing else fits)."""
         options = self.roasts(p)
-        recent = self.__dict__.setdefault("roast_recent", {}).setdefault(p.sid, deque(maxlen=3))
-        fresh = [line for line in options if line not in recent] or options
-        line = random.choice(fresh[:2])
+        recent = self.__dict__.setdefault("roast_recent", {}).setdefault(p.sid, deque(maxlen=ROAST_MEMORY))
+        fresh = [line for line in options if line not in recent] or [line for line in options if line != (recent or [None])[-1]] or options
+        line = random.choice(fresh)
         recent.append(line)
         return f"[ROAST] {line}"
 
     def roasts(self, p):
-        """Every roast that fits p's match, the best fitting first. Only their gameplay and Steam
-        numbers: nothing about who they are, so it stays a joke nobody reports."""
+        """Every roast that fits p's match: chat trash talk about their gameplay and Steam numbers
+        only, nothing about who they are."""
         n = short(p.name, 18)
         k, d = self.board_int(p.sid, "m_iScore"), self.board_int(p.sid, "m_iDeaths")
         if k is None and d is None:  # no scoreboard (no -g15): the kill feed's count
@@ -361,57 +362,68 @@ class InfoCommandsMixin:
         cls = self.player_class(p)
         died_to = self.death_kinds.get(p.sid, Counter())
         killers = Counter({killer: v for (killer, victim), v in self.pair_kills.items() if victim == p.sid and v > 0})
-        sc = cheat_score.score(self, p)
-        pct = cheat_score.pct_text(sc.prob)
         hours = p.hours if isinstance(p.hours, (int, float)) and not isinstance(p.hours, bool) else None
         days = None
         if p.summary and p.summary.get("timecreated"):
             days = int((time.time() - p.summary["timecreated"]) // 86400)
-        weapons = self.weapons.get(p.sid, Counter())
-        sentry = sum(v for w, v in weapons.items() if w.startswith(("obj_sentrygun", "obj_minisentry")))
-        s = lambda count: "s" * (count != 1)  # noqa: E731
+        kd = f"{k}-{d}"
+        losing = d >= 4 and k * 2 <= d
         out = []
-        if k >= 10 and k >= 3 * max(d, 1):
-            if sc.at_least("Likely"):
-                out.append(f"{n} is {k}-{d}. Ran a cheat scan... {pct}. Yeah, that explains it.")
-            else:
-                out.append(f"{n} is {k}-{d}. Can't roast that. Ran a cheat scan instead... {pct}. Damn, just good.")
+        if k >= 10 and k >= 3 * max(d, 1):  # sweating
+            out += [f"{n} {kd} in casual. bro tryharding like there's prize money",
+                    f"{n} {kd}. relax bro it's casual, the medal is plastic",
+                    f"{n} {kd} in casual. bro thinks this is comp, nobody's watching"]
+        if d >= 6 and k * 3 <= d:  # a bad match
+            out += [f"{n} is {kd}. dogwater. absolute dogwater. uninstall.",
+                    f"{n} {kd}. skill issue so big it has its own hitbox",
+                    f"{n} {kd}. spends more time in spawn than the cart",
+                    f"{n} {kd}. getting dunked on by f2ps with stock weapons",
+                    f"{n} {kd}. enemy team should be paying you a salary",
+                    f"{n} {kd}. free to play and still a waste of money",
+                    f"{n} {kd}. bro is playing with the monitor off"]
+        if k == 0 and d >= 3:
+            out += [f"{n} 0 kills. playing on peaceful mode",
+                    f"{n} 0 kills. a spectator with extra steps",
+                    f"{n} 0-{d}. not a player, a respawn timer"]
         if killers:
             top, count = killers.most_common(1)[0]
             if count >= 4 and top in self.players:
                 kn = short(self.players[top].name, 16)
                 back = max(self.pair_kills.get((p.sid, top), 0), 0)
-                out.append(f"{kn} has killed {n} {count} times ({back} back). {n} is now legally {kn}'s pet.")
-        if k == 0 and d >= 3:
-            out.append(f"{n}: 0 kills, {d} deaths. The enemy team is reporting them for being too nice.")
-        if d >= 6 and k * 3 <= d:
-            out.append(f"Ran a cheat scan on {n}: {pct}. Nobody would pay for cheats to play like this.")
+                out += [f"{kn} {count} {n} {back}. {n} respawning just to say hi",
+                        f"{n} died to {kn} {count} times. {kn} has you on a subscription plan",
+                        f"{kn} {count} {n} {back}. {n} is a free daily for {kn}"]
         if died_to["backstab"] >= 3:
-            out.append(f"{n} has been backstabbed {died_to['backstab']} times. Turn around. Just once. Please.")
+            c = died_to["backstab"]
+            out += [f"{n} backstabbed {c} times. your back's seen more knives than a kitchen",
+                    f"{n} got backstabbed {c} times. spy's farming you like a contract"]
         if died_to["headshot"] >= 3:
-            out.append(f"{n} has been headshot {died_to['headshot']} times. The Sniper says thanks and sends a jar.")
-        if cls == "Sniper" and k <= 2 and d >= 4:
-            out.append(f"{n}'s crosshair is always exactly where the enemy was two seconds ago.")
-        if cls == "Spy" and not self.stab_kills.get(p.sid) and d >= 3:
-            out.append(f"{n} is a Spy with 0 backstabs. Mostly just walking behind people politely.")
-        if cls == "Engineer" and sentry >= 3 and sentry > k - sentry:
-            out.append(f"{n}'s sentry has {sentry} kills, {n} has {max(k - sentry, 0)}. "
-                       "The sentry should be the one playing.")
-        if cls == "Pyro" and k <= 3 and d >= 4:
-            out.append(f"{n} is a Pyro with {k} kill{s(k)}. Holding M1 and still losing.")
+            c = died_to["headshot"]
+            out += [f"{n} ate {c} headshots. stop peeking the sniper, it's not a love story",
+                    f"{n} took {c} headshots. sniper's got your head on speed dial"]
         if hours and hours >= 1000 and d > k:
-            out.append(f"{n}: {int(hours):,} hours. Judging by tonight, {int(hours) - 10:,} of them were "
-                       "spent idling on trade servers.")
+            out.append(f"{n} {int(hours):,} hours and still {kd}. {int(hours):,} hours of tutorial mode")
         if days is not None and days < 60 and d > k:
-            out.append(f"{n}'s account is {days} day{s(days)} old and they're {k}-{d}. "
-                       "Bold to make a second account just for this.")
-        if cls == "Medic":
-            out.append(f"{n} is playing Medic. Saving the uber for their wedding.")
+            out.append(f"{n} {days} day old account and {kd}. smurfing and still getting clapped")
+        class_lines = {
+            "Sniper": (k <= 2 and d >= 4, f"{n}, sniper with {k} kill{'s' * (k != 1)}. scoped in, zoned out"),
+            "Spy": (not self.stab_kills.get(p.sid) and d >= 3, f"{n}, spy with 0 stabs. bro's a 125hp tourist"),
+            "Pyro": (k <= 3 and d >= 4, f"{n}, pyro with {k} kill{'s' * (k != 1)}. W+M1 and still lost the 1v1"),
+            "Demoman": (k <= 3 and d >= 4, f"{n}, demo with {k} kill{'s' * (k != 1)}. sticky spam, zero damage, max embarrassment"),
+            "Heavy": (k <= 3 and d >= 4, f"{n}, heavy with {k} kill{'s' * (k != 1)}. biggest hitbox in the game, smallest impact"),
+            "Soldier": (k <= 3 and d >= 4, f"{n}, soldier with {k} kill{'s' * (k != 1)}. rocket jumped straight into the killfeed"),
+            "Scout": (d >= 8 and k < d, f"{n}, scout with {d} deaths. fastest class, slowest brain"),
+            "Engineer": (k <= 3 and d >= 4, f"{n}, engi with {k} kill{'s' * (k != 1)}. sentry's hard carrying, you're just its wrench"),
+            "Medic": (losing, f"{n} playing medic and the whole team is dead. uber your brain"),
+        }
+        if cls in class_lines and class_lines[cls][0]:
+            out.append(class_lines[cls][1])
         if not out:
-            out.append(f"{n} just got here. Give them a minute to embarrass themselves." if not k and not d
-                       else f"{n} is {k}-{d}. Too average to roast. That's the roast.")
+            if not k and not d:
+                out.append(f"{n} just got here. no stats yet, the vibes are already bad")
+            else:
+                out += [f"{n} {kd}. aggressively mid", f"{n} {kd}. background npc, no dialogue"]
         return [line if fits(f"[ROAST] {line}", CHAT_LIMIT) else line[:CHAT_LIMIT - 12] + "..." for line in out]
-
 
     def toggle_info_command(self, command):
         """A pill on the Chat page's Chat commands card."""
