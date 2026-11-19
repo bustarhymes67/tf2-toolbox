@@ -112,7 +112,10 @@ def evaluate(p, cfg, lists, marks, thieves, now=None):
 
 # Community-server ban reasons that mean cheating (not "mic spam" or "not playing against the hale").
 CHEAT_BAN_RE = re.compile(r"aim ?bot|aim ?lock|silent ?aim|trigger ?bot|spin ?bot|wall ?hack|\besp\b|cheat|hack|"
-                          r"lmaobox|fedoraware|nullcore|exploit|чит", re.I)
+                          r"lmaobox|fedoraware|nullcore|exploit|чит|"
+                          # Server anti-cheats ban on a detection: SMAC ("SMAC 0.8.6.0: ConVar r_drawothermodels
+                          # violation"), StAC, LilAC (Little Anti-Cheat).
+                          r"\bsmac\b|\bstac\b|\blilac\b|anti.?cheat", re.I)
 
 
 # How much each flag says, and why. The first pattern that matches a flag's text wins. The levels:

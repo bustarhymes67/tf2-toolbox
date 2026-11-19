@@ -209,11 +209,14 @@ class BanTests(OwnSources):
         self.assertTrue(clue.proof)
         self.assertEqual(clue.lr, 1000.0)
         self.assertTrue(clue.text.startswith("banned for cheating by 1 server community"))
-        for reason in ("wallhack", "ESP", "triggerbot", "hacking"):
+        for reason in ("wallhack", "ESP", "triggerbot", "hacking", "SMAC 0.8.6.0: ConVar r_drawothermodels violation",
+                       "SMAC NX44", "[StAC] aimsnap", "LilAC: angle cheat"):
             old = [{"Server": "Skial", "Reason": reason, "BanTimestamp": str(int(NOW - 8 * YEAR))}]
             clue, = cs.ban_clues(FakeApp(), player(sourcebans=old), now=NOW)
             self.assertTrue(clue.proof, reason)  # 8 years old: still proof
             self.assertEqual(cs.band_of(0.01, clue.proof), "Proven")
+        smac = [{"Server": "a", "Reason": "Inappropriate Language"}, {"Server": "b", "Reason": "SMAC NX44"}]
+        self.assertTrue(cs.ban_clues(FakeApp(), player(sourcebans=smac))[0].proof)  # one SMAC ban among others
         other, = cs.ban_clues(FakeApp(), player(sourcebans=[{"Server": "x", "Reason": "mic spam"}]))
         self.assertEqual(other.lr, 1.1)
         self.assertFalse(other.proof)
