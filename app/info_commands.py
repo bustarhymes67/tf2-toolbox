@@ -35,7 +35,6 @@ INFO_RE = re.compile(r"^\s*!(?P<command>" + "|".join(INFO_COMMANDS) + r")\b\s*(?
 OTHER_TEAM = {"RED": "BLU", "BLU": "RED"}
 SHORT_CLASS = {"Engineer": "Engi"}  # so a whole team fits in one message
 MYSTATS_CACHE = 600   # seconds a player's Steam stats are kept (in memory only) before asking again
-ASKER_COOLDOWN = 20   # seconds before the same player gets another !roast or !mystats answer
 
 
 def short(name, size=20):
@@ -250,16 +249,6 @@ class InfoCommandsMixin:
             line = fit_list("[HELP] ", [item.split(" ")[0] for item in items], sep=" ") + " (most take a name)"
         return line
 
-    def too_soon(self, command, asker):
-        """True when this player got a !roast or !mystats answer less than ASKER_COOLDOWN ago, so
-        nobody can farm them into a chat flood (and a kick for spam)."""
-        asked = self.__dict__.setdefault("info_asked_at", {})
-        now = time.time()
-        if now - asked.get((command, asker), -ASKER_COOLDOWN) < ASKER_COOLDOWN:
-            return True
-        asked[(command, asker)] = now
-        return False
-
     # --- !stats: this match ------------------------------------------------------------------
 
     def stats_line(self):
@@ -301,8 +290,6 @@ class InfoCommandsMixin:
         if not sid:
             self.announce_chat(f"[MYSTATS] Couldn't find {short(name)} on the scoreboard", say)
             return
-        if self.too_soon("mystats", sid):
-            return
         if not self.cfg["steam_api_key"]:
             self.announce_chat("[MYSTATS] Needs a Steam API key in the toolbox", say)
             return
@@ -341,8 +328,6 @@ class InfoCommandsMixin:
             if error:
                 self.announce_chat(error, say)
                 return
-        if self.too_soon("roast", asker or name):
-            return
         self.announce_chat(self.roast_line(p), say)
 
     def roast_line(self, p):

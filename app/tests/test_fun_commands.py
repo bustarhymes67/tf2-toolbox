@@ -61,7 +61,9 @@ class FunCommandsTest(unittest.TestCase):
                 wait_for(g, lambda: any("best life" in line for line in g.said()))
                 self.assertIn("Hank | best life: 23 kills (Soldier), 4.8k dmg (Heavy), 9 stabs", g.said())
                 self.assertEqual(asked, [a.sid_by_name("Hank")])
-                g.say("Hank", "!mystats", 1.0)  # again right away: the cooldown, no lookup, no line
+                g.say("Hank", "!mystats")  # again right away: no cooldown (kept 10 minutes: no new lookup)
+                wait_for(g, lambda: g.said().count("Hank | best life: 23 kills (Soldier), 4.8k dmg (Heavy), 9 stabs") == 2)
+                self.assertEqual(g.said().count("Hank | best life: 23 kills (Soldier), 4.8k dmg (Heavy), 9 stabs"), 2)
                 self.assertEqual(asked, [a.sid_by_name("Hank")])
                 g.say("dan", "!mystats")
                 wait_for(g, lambda: any("private" in line for line in g.said()))
@@ -112,9 +114,9 @@ class FunCommandsTest(unittest.TestCase):
             self.assertTrue(any("dan" in line for line in g.said() if line.startswith("[ROAST] ")))
             g.say("dan", "!roast me")
             wait_for(g, lambda: len([line for line in g.said() if line.startswith("[ROAST] ")]) >= 2)
-            before = len(g.said())
-            g.say("dan", "!roast me", 1.5)  # within the cooldown: nothing
-            self.assertEqual(len(g.said()), before)
+            g.say("dan", "!roast me")  # right away again: no cooldown
+            wait_for(g, lambda: len([line for line in g.said() if line.startswith("[ROAST] ")]) >= 3)
+            self.assertGreaterEqual(len([line for line in g.said() if line.startswith("[ROAST] ")]), 3)
         Game().play(script)
 
 
